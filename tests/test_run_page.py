@@ -96,7 +96,12 @@ def test_run_page_keeps_timestamps_on_one_line(client, db):
     assert "sh-timeline-head" in page
     assert 'data-state="needs_approval"' in page
     assert "sh-badge-warning" in page
+    assert "Decision required" in page
+    assert "Option A" not in page
+    assert "Option B" not in page
+    assert "sh-decision-or" in page
     assert "Approve apply of abc123def456" in page
+    assert "Reject run" in page
     assert "Manual by ada@example.com" in page
     assert "Install nginx" in page
     assert 'data-log-open="log-overlay-' in page

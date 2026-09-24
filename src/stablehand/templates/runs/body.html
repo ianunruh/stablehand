@@ -58,26 +58,38 @@
         {% endif %}
         {% if step.approval %}
         <div class="sh-approval">
-          {% if approve_block and not can_approve %}
-          <p class="sh-muted mb-3 text-sm">{{ approve_block }}</p>
-          {% endif %}
-          <div class="flex flex-wrap items-end gap-3">
+          <div class="sh-decision-header">
+            <p class="sh-section-title">Decision required</p>
+            <p class="sh-muted mt-1 text-sm">Choose one of the two actions below to resolve this check.</p>
+          </div>
+          <div class="sh-decision-grid">
+            <section class="sh-decision-option sh-decision-approve{% if not can_approve %} sh-decision-disabled{% endif %}">
+              <h3 class="sh-decision-title">Approve and apply</h3>
+              <p class="sh-decision-description">Apply the reviewed changes from commit <span class="sh-mono">{{ run.commit_sha[:12] }}</span>.</p>
             {% if can_approve %}
-            <form method="post" action="/runs/{{ run.id }}/approve">
-              {{ ui.csrf() }}
-              <button class="sh-btn sh-btn-primary" type="submit">
-                Approve apply of {{ run.commit_sha[:12] }}
-              </button>
-            </form>
+              <form class="sh-decision-action" method="post" action="/runs/{{ run.id }}/approve">
+                {{ ui.csrf() }}
+                <button class="sh-btn sh-btn-primary" type="submit">
+                  Approve apply of {{ run.commit_sha[:12] }}
+                </button>
+              </form>
+            {% elif approve_block %}
+              <p class="sh-decision-note">{{ approve_block }}</p>
             {% endif %}
-            <form class="flex items-end gap-2" method="post" action="/runs/{{ run.id }}/reject">
+            </section>
+            <div class="sh-decision-or" aria-hidden="true"><span>or</span></div>
+            <section class="sh-decision-option sh-decision-reject">
+              <h3 class="sh-decision-title">Reject changes</h3>
+              <p class="sh-decision-description">Stop this run without applying. Add context for the person who opened it.</p>
+              <form class="sh-decision-form" method="post" action="/runs/{{ run.id }}/reject">
               {{ ui.csrf() }}
               <label class="sh-field">
-                <span class="sh-label">Reject reason</span>
-                <input class="sh-input" name="reason">
+                <span class="sh-label">Reason <span class="sh-muted">(optional)</span></span>
+                <input class="sh-input" name="reason" placeholder="What needs to change?">
               </label>
-              <button class="sh-btn sh-btn-danger" type="submit">Reject</button>
-            </form>
+                <button class="sh-btn sh-btn-danger" type="submit">Reject run</button>
+              </form>
+            </section>
           </div>
         </div>
         {% endif %}

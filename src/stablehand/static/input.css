@@ -808,10 +808,101 @@
 
   .sh-approval {
     margin-top: 1rem;
-    border: 1px solid var(--warning-border);
-    border-radius: 0.6rem;
-    background: var(--warning-bg);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 0.65rem;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+
+  .sh-decision-header {
+    border-bottom: 1px solid var(--border);
+    background: var(--canvas-subtle);
+    padding: 1rem 1.15rem;
+  }
+
+  .sh-decision-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: stretch;
+    gap: 1rem;
     padding: 1rem;
+  }
+
+  .sh-decision-option {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 0.55rem;
+    background: var(--surface-raised);
+    padding: 1rem;
+  }
+
+  .sh-decision-approve {
+    border-top: 3px solid var(--accent);
+  }
+
+  .sh-decision-reject {
+    border-top: 3px solid var(--danger-ink);
+  }
+
+  .sh-decision-disabled {
+    background: var(--canvas-subtle);
+  }
+
+  .sh-decision-title {
+    font-size: 0.95rem;
+    font-weight: 750;
+  }
+
+  .sh-decision-description {
+    margin-top: 0.4rem;
+    color: var(--ink-soft);
+    font-size: 0.78rem;
+    line-height: 1.5;
+  }
+
+  .sh-decision-action,
+  .sh-decision-form,
+  .sh-decision-note {
+    margin-top: auto;
+    padding-top: 1rem;
+  }
+
+  .sh-decision-form {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .sh-decision-form .sh-btn,
+  .sh-decision-action .sh-btn {
+    width: 100%;
+  }
+
+  .sh-decision-note {
+    color: var(--ink-faint);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+
+  .sh-decision-or {
+    display: grid;
+    place-items: center;
+    color: var(--ink-faint);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 0.78rem;
+    font-style: italic;
+  }
+
+  .sh-decision-or span {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--canvas);
   }
 
   .approve-bar {
@@ -858,6 +949,10 @@
     .sh-page-actions {
       width: 100%;
       justify-content: flex-start;
+    }
+
+    .sh-decision-grid {
+      grid-template-columns: 1fr;
     }
 
     .sh-list-row {
