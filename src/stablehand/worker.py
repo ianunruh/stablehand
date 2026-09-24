@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from stablehand.config import get_settings
 from stablehand.db import get_sessionmaker
 from stablehand.executors import for_stack
-from stablehand.models import LIVE_STATES, Execution, Run, RunState, Stack
+from stablehand.models import LIVE_STATES, Execution, Run, RunState, Stack, new_id
 from stablehand.runs.service import (
     APPLY,
     CHECK,
@@ -110,23 +110,29 @@ def _dispatch(session: Session, queued: RunState, running: RunState, phase: str)
             continue
         session.refresh(run)
         stack = run.stack
+        execution = Execution(
+            id=new_id(),
+            run_id=run.id,
+            phase=phase,
+            backend=stack.executor,
+            status="running",
+        )
         try:
             token = issue_run_token(session, run, phase)
-            ref, secret_name = for_stack(stack.executor).start(run, stack, phase, token)
+            ref, secret_name = for_stack(stack.executor).start(
+                run,
+                stack,
+                phase,
+                token,
+                execution_id=execution.id,
+            )
         except Exception as exc:
             logger.exception("failed to start %s for %s", phase, run.id)
             fail_run(session, run, str(exc))
             continue
-        session.add(
-            Execution(
-                run_id=run.id,
-                phase=phase,
-                backend=stack.executor,
-                ref=ref,
-                secret_name=secret_name,
-                status="running",
-            )
-        )
+        execution.ref = ref
+        execution.secret_name = secret_name
+        session.add(execution)
         session.commit()
 
 

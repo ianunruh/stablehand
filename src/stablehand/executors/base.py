@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import os
+import uuid
 
 from stablehand.config import get_settings
 from stablehand.models import Run, Stack
 
 
 class Executor:
-    def start(self, run: Run, stack: Stack, phase: str, token: str) -> tuple[str, str | None]:
+    def start(
+        self,
+        run: Run,
+        stack: Stack,
+        phase: str,
+        token: str,
+        *,
+        execution_id: uuid.UUID,
+    ) -> tuple[str, str | None]:
         """Start an execution. Returns (ref, secret_name)."""
         raise NotImplementedError
 

@@ -1,4 +1,5 @@
 from stablehand.models import RunState, Stack, StackApprover
+from stablehand.plans.normalize import fingerprint, normalize
 from stablehand.runs.service import (
     RunError,
     approve_run,
@@ -52,6 +53,23 @@ def test_empty_change_set_finishes_unchanged(db):
         exit_code=0,
     )
     assert run.state == RunState.unchanged.value
+
+
+def test_empty_inventory_fails_check(db):
+    stack = _stack(db)
+    run = create_run(db, stack, commit_sha="local", trigger="schedule", user=None)
+    run.state = RunState.check_running.value
+    db.commit()
+    ingest_check_result(
+        db,
+        run,
+        raw={"plan": [], "results": None},
+        inventory_hosts=[],
+        stderr="",
+        exit_code=0,
+    )
+    assert run.state == RunState.check_failed.value
+    assert run.error == "The inventory did not contain any hosts."
 
 
 def test_unreachable_host_blocks_approval(db):
@@ -114,22 +132,29 @@ def test_allow_list_limits_approvers(db):
 def test_fingerprint_mismatch_returns_to_approval(db):
     stack = _stack(db)
     run = create_run(db, stack, commit_sha="abc", trigger="ci", user=None)
+    approved_stderr = """--- web-1:/etc/motd
++++ web-1:/etc/motd
+@@ -1 +1 @@
+-old
++approved
+"""
+    approved_document = normalize(FIXTURE, ["web-1", "web-2"], approved_stderr)
     run.state = RunState.apply_running.value
-    run.approved_fingerprint = "not-the-current-set"
-    run.check_document = {"hosts": [], "counts": {}}
+    run.approved_fingerprint = fingerprint(approved_document)
+    run.check_document = approved_document
     db.commit()
     proceed = ingest_apply_precheck(
         db,
         run,
         raw=FIXTURE,
         inventory_hosts=["web-1", "web-2"],
-        stderr="",
+        stderr=approved_stderr.replace("+approved", "+changed"),
         exit_code=0,
     )
     assert proceed is False
     assert run.state == RunState.needs_approval.value
     assert run.approved_fingerprint is None
-    assert run.previous_check_document == {"hosts": [], "counts": {}}
+    assert run.previous_check_document == approved_document
     assert "moved" in (run.blocked_reason or "")
 
 

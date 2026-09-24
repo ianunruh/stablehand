@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 
 _HOST_ERROR = re.compile(
@@ -44,6 +45,7 @@ def normalize(
                 {
                     "name": operation.get("name") or operation.get("op_hash") or "operation",
                     "op_hash": operation.get("op_hash") or "",
+                    "args_hash": _json_digest(operation.get("args") or []),
                     "will_change": will_change,
                     "conditional": name in conditional,
                     "result": result,
@@ -100,13 +102,45 @@ def normalize(
 
 
 def fingerprint(document: dict) -> str:
-    rows: list[str] = []
+    operations: list[dict] = []
+    diffs: list[dict] = []
     for host in document.get("hosts") or []:
+        host_name = host["name"]
         for operation in host.get("operations") or []:
             if operation.get("will_change"):
-                rows.append(f"{host['name']}\t{operation.get('op_hash', '')}\t1")
-    rows.sort()
-    return hashlib.sha256("\n".join(rows).encode()).hexdigest()
+                operations.append(
+                    {
+                        "host": host_name,
+                        "op_hash": operation["op_hash"],
+                        "args_hash": operation["args_hash"],
+                        "conditional": bool(operation.get("conditional")),
+                    }
+                )
+        for diff in host.get("diffs") or []:
+            diffs.append({"host": host_name, "diff_hash": _text_digest(diff)})
+    operations.sort(key=_canonical_json)
+    diffs.sort(key=_canonical_json)
+    return _text_digest(
+        _canonical_json(
+            {
+                "version": 2,
+                "operations": operations,
+                "diffs": diffs,
+            }
+        )
+    )
+
+
+def _json_digest(value) -> str:
+    return _text_digest(_canonical_json(value))
+
+
+def _canonical_json(value) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def _text_digest(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
 
 
 def _results_index(raw: dict | None) -> dict[str, dict[str, str]]:

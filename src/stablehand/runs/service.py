@@ -151,14 +151,14 @@ def ingest_check_result(
     run.check_fingerprint = fingerprint(document)
     run.approval_blocked = bool(document["blocked"])
     run.blocked_reason = _blocked_reason(document)
-    if exit_code != 0 and not document["hosts"]:
+    if not inventory_hosts:
+        run.state = RunState.check_failed.value
+        run.error = "The inventory did not contain any hosts."
+    elif exit_code != 0 and not document["hosts"]:
         run.state = RunState.check_failed.value
         run.error = stderr.strip()[-2000:] or f"pyinfra exited {exit_code}."
     elif document["counts"]["change"] == 0 and not document["blocked"]:
         run.state = RunState.unchanged.value
-    elif document["counts"]["hosts"] == 0:
-        run.state = RunState.check_failed.value
-        run.error = "The inventory did not contain any hosts."
     else:
         run.state = RunState.needs_approval.value
     run.updated_at = utcnow()

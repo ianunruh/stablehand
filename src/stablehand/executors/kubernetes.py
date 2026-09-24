@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 
 from kubernetes import client, config
 from kubernetes.client import ApiException
@@ -13,21 +14,21 @@ logger = logging.getLogger(__name__)
 
 
 class KubernetesExecutor(Executor):
-    def start(self, run: Run, stack: Stack, phase: str, token: str) -> tuple[str, str | None]:
+    def start(
+        self,
+        run: Run,
+        stack: Stack,
+        phase: str,
+        token: str,
+        *,
+        execution_id: uuid.UUID,
+    ) -> tuple[str, str | None]:
         _load_config()
         settings = get_settings()
         namespace = settings.k8s_namespace
-        job_name = f"sh-{str(run.id)[:8]}-{phase}"
-        secret_name = f"{job_name}-token"
+        job_name, secret_name = _resource_names(run.id, execution_id, phase)
         core = client.CoreV1Api()
         batch = client.BatchV1Api()
-        core.create_namespaced_secret(
-            namespace,
-            client.V1Secret(
-                metadata=client.V1ObjectMeta(name=secret_name),
-                string_data={"token": token},
-            ),
-        )
         env = [
             client.V1EnvVar(name=key, value=value)
             for key, value in runner_env(run, stack, phase, "").items()
@@ -79,7 +80,19 @@ class KubernetesExecutor(Executor):
                 ),
             ),
         )
-        batch.create_namespaced_job(namespace, job)
+        try:
+            core.create_namespaced_secret(
+                namespace,
+                client.V1Secret(
+                    metadata=client.V1ObjectMeta(name=secret_name),
+                    string_data={"token": token},
+                ),
+            )
+            batch.create_namespaced_job(namespace, job)
+        except Exception:
+            _delete_job(batch, job_name, namespace)
+            _delete_secret(core, secret_name, namespace)
+            raise
         return job_name, secret_name
 
     def poll(self, ref: str, secret_name: str | None) -> str:
@@ -94,14 +107,40 @@ class KubernetesExecutor(Executor):
         return "running"
 
     def cleanup(self, ref: str, secret_name: str | None) -> None:
-        if not secret_name:
-            return
         _load_config()
-        try:
-            client.CoreV1Api().delete_namespaced_secret(secret_name, get_settings().k8s_namespace)
-        except ApiException as exc:
-            if exc.status != 404:
-                logger.warning("could not delete secret %s: %s", secret_name, exc.reason)
+        namespace = get_settings().k8s_namespace
+        _delete_job(client.BatchV1Api(), ref, namespace)
+        if secret_name:
+            _delete_secret(client.CoreV1Api(), secret_name, namespace)
+
+
+def _resource_names(run_id: uuid.UUID, execution_id: uuid.UUID, phase: str) -> tuple[str, str]:
+    job_name = f"sh-{run_id.hex[:8]}-{execution_id.hex}-{phase}"
+    return job_name, f"{job_name}-token"
+
+
+def _delete_job(batch, job_name: str, namespace: str) -> None:
+    try:
+        batch.delete_namespaced_job(
+            name=job_name,
+            namespace=namespace,
+            propagation_policy="Background",
+        )
+    except ApiException as exc:
+        if exc.status != 404:
+            logger.warning("could not delete job %s: %s", job_name, exc.reason)
+    except Exception:
+        logger.exception("could not delete job %s", job_name)
+
+
+def _delete_secret(core, secret_name: str, namespace: str) -> None:
+    try:
+        core.delete_namespaced_secret(name=secret_name, namespace=namespace)
+    except ApiException as exc:
+        if exc.status != 404:
+            logger.warning("could not delete secret %s: %s", secret_name, exc.reason)
+    except Exception:
+        logger.exception("could not delete secret %s", secret_name)
 
 
 def _load_config() -> None:

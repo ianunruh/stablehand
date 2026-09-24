@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     MetaData,
     String,
@@ -191,6 +192,10 @@ class ApiToken(Base):
 
 class Run(Base):
     __tablename__ = "runs"
+    __table_args__ = (
+        Index("ix_runs_stack_id", "stack_id"),
+        Index("ix_runs_state", "state"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
     stack_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stacks.id", ondelete="CASCADE"))

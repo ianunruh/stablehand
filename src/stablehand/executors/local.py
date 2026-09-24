@@ -2,13 +2,23 @@ from __future__ import annotations
 
 import os
 import subprocess
+import uuid
 
 from stablehand.executors.base import Executor, runner_env
 from stablehand.models import Run, Stack
 
 
 class LocalExecutor(Executor):
-    def start(self, run: Run, stack: Stack, phase: str, token: str) -> tuple[str, str | None]:
+    def start(
+        self,
+        run: Run,
+        stack: Stack,
+        phase: str,
+        token: str,
+        *,
+        execution_id: uuid.UUID,
+    ) -> tuple[str, str | None]:
+        del execution_id
         process = subprocess.Popen(
             ["stablehand-runner"],
             env=runner_env(run, stack, phase, token),

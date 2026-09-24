@@ -16,14 +16,13 @@ def main() -> None:
         inventory_hosts, inventory_stderr = debug_inventory(source)
         post_log(phase, inventory_stderr)
         check_raw, check_stderr, check_code = run_pyinfra(source, apply=False)
-        post_log(phase, check_stderr)
         if phase == "check":
             post_json(
                 "/check-result",
                 {
                     "raw": check_raw,
                     "inventory_hosts": inventory_hosts,
-                    "stderr": "",
+                    "stderr": check_stderr,
                     "exit_code": check_code,
                 },
             )
@@ -33,20 +32,19 @@ def main() -> None:
             {
                 "raw": check_raw,
                 "inventory_hosts": inventory_hosts,
-                "stderr": "",
+                "stderr": check_stderr,
                 "exit_code": check_code,
             },
         )
         if not decision.get("proceed"):
             return
         apply_raw, apply_stderr, apply_code = run_pyinfra(source, apply=True)
-        post_log(phase, apply_stderr)
         post_json(
             "/apply-result",
             {
                 "raw": apply_raw,
                 "inventory_hosts": inventory_hosts,
-                "stderr": "",
+                "stderr": apply_stderr,
                 "exit_code": apply_code,
             },
         )

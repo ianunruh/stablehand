@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 
 from stablehand.plans.normalize import fingerprint, normalize
@@ -46,6 +47,34 @@ def test_fingerprint_tracks_the_change_set():
     )
     assert fingerprint(first) != fingerprint(second)
     assert fingerprint(first) == fingerprint(normalize(FIXTURE, ["web-1", "web-2"], ""))
+
+
+def test_fingerprint_tracks_arguments_diffs_and_conditionals():
+    baseline = normalize(FIXTURE, ["web-1", "web-2"], STDERR)
+
+    changed_args = deepcopy(FIXTURE)
+    changed_args["plan"][0]["args"] = ["message=changed"]
+    assert fingerprint(normalize(changed_args, ["web-1", "web-2"], STDERR)) != fingerprint(baseline)
+
+    changed_diff = STDERR.replace("+new", "+different")
+    assert fingerprint(normalize(FIXTURE, ["web-1", "web-2"], changed_diff)) != fingerprint(
+        baseline
+    )
+
+    definite = deepcopy(FIXTURE)
+    definite["plan"][0]["hosts_with_change"].append("web-2")
+    definite["plan"][0]["hosts_with_conditional_change"] = []
+    assert fingerprint(normalize(definite, ["web-1", "web-2"], STDERR)) != fingerprint(baseline)
+
+
+def test_fingerprint_is_independent_of_document_order():
+    document = normalize(FIXTURE, ["web-1", "web-2"], STDERR)
+    reordered = deepcopy(document)
+    reordered["hosts"].reverse()
+    for host in reordered["hosts"]:
+        host["operations"].reverse()
+        host["diffs"].reverse()
+    assert fingerprint(reordered) == fingerprint(document)
 
 
 def test_apply_results_mark_failures():
