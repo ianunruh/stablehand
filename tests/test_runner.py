@@ -1,9 +1,14 @@
+import subprocess
+from contextlib import nullcontext
+
+import pytest
+
 from stablehand.runner import main as runner
 
 
 def test_check_upload_forwards_stderr_without_duplicate_log(monkeypatch, tmp_path):
     monkeypatch.setenv("STABLEHAND_PHASE", "check")
-    monkeypatch.setattr(runner, "materialize_source", lambda: tmp_path)
+    monkeypatch.setattr(runner, "materialize_source", lambda: nullcontext(tmp_path))
     monkeypatch.setattr(
         runner,
         "debug_inventory",
@@ -41,7 +46,7 @@ def test_check_upload_forwards_stderr_without_duplicate_log(monkeypatch, tmp_pat
 
 def test_apply_uploads_each_invocation_stderr(monkeypatch, tmp_path):
     monkeypatch.setenv("STABLEHAND_PHASE", "apply")
-    monkeypatch.setattr(runner, "materialize_source", lambda: tmp_path)
+    monkeypatch.setattr(runner, "materialize_source", lambda: nullcontext(tmp_path))
     monkeypatch.setattr(runner, "debug_inventory", lambda source: (["web-1"], ""))
     results = iter(
         [
@@ -65,3 +70,44 @@ def test_apply_uploads_each_invocation_stderr(monkeypatch, tmp_path):
     assert uploads[0][1]["stderr"] == "precheck diff\n"
     assert uploads[1][0] == "/apply-result"
     assert uploads[1][1]["stderr"] == "apply output\n"
+
+
+def test_git_checkout_is_removed_after_use(monkeypatch):
+    monkeypatch.setenv("STABLEHAND_SOURCE_KIND", "git")
+    monkeypatch.setenv("STABLEHAND_GIT_URL", "https://example.test/repo.git")
+    monkeypatch.setenv("STABLEHAND_GIT_REF", "main")
+    monkeypatch.setenv("STABLEHAND_COMMIT", "abc123")
+
+    def check_call(command, **kwargs):
+        if command[1] == "clone":
+            source = runner.Path(command[-1])
+            source.mkdir()
+
+    monkeypatch.setattr(runner.subprocess, "check_call", check_call)
+
+    with runner.materialize_source() as source:
+        checkout_root = source.parent
+        assert source.exists()
+
+    assert not checkout_root.exists()
+
+
+def test_git_checkout_is_removed_when_clone_fails(monkeypatch):
+    monkeypatch.setenv("STABLEHAND_SOURCE_KIND", "git")
+    monkeypatch.setenv("STABLEHAND_GIT_URL", "https://example.test/repo.git")
+    monkeypatch.setenv("STABLEHAND_GIT_REF", "main")
+    monkeypatch.setenv("STABLEHAND_COMMIT", "abc123")
+    checkout_root = None
+
+    def fail_clone(command, **kwargs):
+        nonlocal checkout_root
+        checkout_root = runner.Path(command[-1]).parent
+        raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(runner.subprocess, "check_call", fail_clone)
+
+    with pytest.raises(subprocess.CalledProcessError), runner.materialize_source():
+        pass
+
+    assert checkout_root is not None
+    assert not checkout_root.exists()

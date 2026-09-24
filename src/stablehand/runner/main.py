@@ -4,6 +4,8 @@ import json
 import os
 import subprocess
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
@@ -12,13 +14,23 @@ import httpx
 def main() -> None:
     phase = os.environ["STABLEHAND_PHASE"]
     try:
-        source = materialize_source()
-        inventory_hosts, inventory_stderr = debug_inventory(source)
-        post_log(phase, inventory_stderr)
-        check_raw, check_stderr, check_code = run_pyinfra(source, apply=False)
-        if phase == "check":
-            post_json(
-                "/check-result",
+        with materialize_source() as source:
+            inventory_hosts, inventory_stderr = debug_inventory(source)
+            post_log(phase, inventory_stderr)
+            check_raw, check_stderr, check_code = run_pyinfra(source, apply=False)
+            if phase == "check":
+                post_json(
+                    "/check-result",
+                    {
+                        "raw": check_raw,
+                        "inventory_hosts": inventory_hosts,
+                        "stderr": check_stderr,
+                        "exit_code": check_code,
+                    },
+                )
+                return
+            decision = post_json(
+                "/apply-precheck",
                 {
                     "raw": check_raw,
                     "inventory_hosts": inventory_hosts,
@@ -26,48 +38,40 @@ def main() -> None:
                     "exit_code": check_code,
                 },
             )
-            return
-        decision = post_json(
-            "/apply-precheck",
-            {
-                "raw": check_raw,
-                "inventory_hosts": inventory_hosts,
-                "stderr": check_stderr,
-                "exit_code": check_code,
-            },
-        )
-        if not decision.get("proceed"):
-            return
-        apply_raw, apply_stderr, apply_code = run_pyinfra(source, apply=True)
-        post_json(
-            "/apply-result",
-            {
-                "raw": apply_raw,
-                "inventory_hosts": inventory_hosts,
-                "stderr": apply_stderr,
-                "exit_code": apply_code,
-            },
-        )
+            if not decision.get("proceed"):
+                return
+            apply_raw, apply_stderr, apply_code = run_pyinfra(source, apply=True)
+            post_json(
+                "/apply-result",
+                {
+                    "raw": apply_raw,
+                    "inventory_hosts": inventory_hosts,
+                    "stderr": apply_stderr,
+                    "exit_code": apply_code,
+                },
+            )
     except Exception as exc:
         post_log(phase, f"{exc}\n")
         raise SystemExit(1) from exc
 
 
-def materialize_source() -> Path:
+@contextmanager
+def materialize_source() -> Iterator[Path]:
     if os.environ.get("STABLEHAND_SOURCE_KIND") == "path":
         path = Path(os.environ["STABLEHAND_LOCAL_PATH"])
         if not path.exists():
             raise RuntimeError(f"Local path does not exist: {path}")
-        return path
-    work = Path(tempfile.mkdtemp(prefix="stablehand-"))
-    dest = work / "source"
-    url = os.environ["STABLEHAND_GIT_URL"]
-    ref = os.environ.get("STABLEHAND_GIT_REF") or "HEAD"
-    sha = os.environ["STABLEHAND_COMMIT"]
-    env = git_env()
-    subprocess.check_call(["git", "clone", "--branch", ref, url, str(dest)], env=env)
-    subprocess.check_call(["git", "checkout", sha], cwd=dest, env=env)
-    return dest
+        yield path
+        return
+    with tempfile.TemporaryDirectory(prefix="stablehand-") as work:
+        dest = Path(work) / "source"
+        url = os.environ["STABLEHAND_GIT_URL"]
+        ref = os.environ.get("STABLEHAND_GIT_REF") or "HEAD"
+        sha = os.environ["STABLEHAND_COMMIT"]
+        env = git_env()
+        subprocess.check_call(["git", "clone", "--branch", ref, url, str(dest)], env=env)
+        subprocess.check_call(["git", "checkout", sha], cwd=dest, env=env)
+        yield dest
 
 
 def git_env() -> dict[str, str]:

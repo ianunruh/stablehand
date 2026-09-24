@@ -28,8 +28,15 @@ class LocalExecutor(Executor):
 
     def poll(self, ref: str, secret_name: str | None) -> str:
         del secret_name
+        pid = int(ref)
         try:
-            os.kill(int(ref), 0)
+            reaped, _ = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            pass
+        else:
+            return "finished" if reaped == pid else "running"
+        try:
+            os.kill(pid, 0)
         except ProcessLookupError:
             return "finished"
         except PermissionError:
