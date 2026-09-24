@@ -615,7 +615,7 @@ def integrations_create(
     del user
     if not name.strip() or not url.strip():
         return _redirect("/settings/integrations", error="Name and URL are required.")
-    save_webhook(db, name=name, url=url, secret=secret, enabled=enabled == "on" or enabled == "")
+    save_webhook(db, name=name, url=url, secret=secret, enabled=enabled == "on")
     return _redirect("/settings/integrations", notice="Webhook saved.")
 
 

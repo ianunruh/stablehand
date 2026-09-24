@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from sqlalchemy import select
 
-from stablehand.models import ApiToken, Run, RunState, Stack
+from stablehand.models import ApiToken, Integration, Run, RunState, Stack
 from stablehand.security import hash_token
 from tests.conftest import add_user, auth, login
 
@@ -81,6 +81,30 @@ def test_caught_stack_error_rolls_back_request(client, db):
 
     assert response.status_code == 400
     assert db.scalar(select(Stack).where(Stack.name == "Must Roll Back")) is None
+
+
+def test_webhook_enabled_checkbox_controls_saved_state(client, db):
+    add_user(db, "admin@example.com", role="admin")
+    token = login(client, "admin@example.com")
+
+    disabled = client.post(
+        "/settings/integrations",
+        data={"name": "disabled", "url": "https://example.test/disabled"},
+        headers=auth(token),
+        follow_redirects=False,
+    )
+    enabled = client.post(
+        "/settings/integrations",
+        data={"name": "enabled", "url": "https://example.test/enabled", "enabled": "on"},
+        headers=auth(token),
+        follow_redirects=False,
+    )
+
+    assert disabled.status_code == 303
+    assert enabled.status_code == 303
+    rows = {row.name: row for row in db.scalars(select(Integration))}
+    assert rows["disabled"].enabled is False
+    assert rows["enabled"].enabled is True
 
 
 def test_ci_token_opens_a_run_without_diffs(client, db, tmp_path):
