@@ -37,4 +37,4 @@ ruff check .
 
 Set `STABLEHAND_DATABASE_URL` to a Postgres URL before `alembic upgrade head`.
 
-Kubernetes stacks run the same `stablehand-runner` image as a Job. See [deploy/kubernetes.yaml](deploy/kubernetes.yaml). The worker service account can create Jobs and Secrets in `stablehand-runners`. Runner pods do not mount a service account token. Provide Postgres and the app settings, including `STABLEHAND_RUNNER_API_URL`, in the `stablehand` secret.
+Kubernetes stacks run `ghcr.io/ianunruh/stablehand:main` as a Job. GitHub Actions publishes that tag from `main`. See [deploy/kubernetes.yaml](deploy/kubernetes.yaml). The worker service account can create Jobs and Secrets in `stablehand-runners`. Runner pods do not mount a service account token. Provide Postgres and the app settings, including `STABLEHAND_RUNNER_API_URL`, in the `stablehand` secret.

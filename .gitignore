@@ -8,3 +8,4 @@ dist/
 build/
 .tailwindcss
 src/stablehand/static/app.css
+docker-compose.override.yml

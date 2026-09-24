@@ -73,7 +73,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: stablehand:latest
+          image: ghcr.io/ianunruh/stablehand:main
           args: ["sh", "-c", "alembic upgrade head && stablehand-web"]
           ports:
             - name: http
@@ -104,7 +104,7 @@ spec:
       serviceAccountName: stablehand-worker
       containers:
         - name: worker
-          image: stablehand:latest
+          image: ghcr.io/ianunruh/stablehand:main
           args: ["stablehand-worker"]
           envFrom:
             - secretRef:

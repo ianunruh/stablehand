@@ -93,6 +93,7 @@ class KubernetesExecutor(Executor):
                             client.V1Container(
                                 name="runner",
                                 image=settings.runner_image,
+                                image_pull_policy="Always",
                                 command=["stablehand-runner"],
                                 env=env,
                                 volume_mounts=mounts or None,

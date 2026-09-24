@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import pytest
 from kubernetes.client import ApiException
 
+from stablehand.config import get_settings
 from stablehand.executors import kubernetes
 from stablehand.executors.kubernetes import KubernetesExecutor, _resource_names
 from stablehand.models import Execution, ExecutorKind, Run, RunState
@@ -53,6 +54,34 @@ def test_start_cleans_up_resources_when_job_creation_fails(monkeypatch):
 
     batch.delete_namespaced_job.assert_called_once()
     core.delete_namespaced_secret.assert_called_once()
+
+
+def test_runner_job_uses_the_published_image(monkeypatch):
+    core = Mock()
+    batch = Mock()
+    monkeypatch.setattr(kubernetes, "_load_config", lambda: None)
+    monkeypatch.setattr(kubernetes.client, "CoreV1Api", lambda: core)
+    monkeypatch.setattr(kubernetes.client, "BatchV1Api", lambda: batch)
+    stack_id = uuid.uuid4()
+    run = Run(
+        id=uuid.uuid4(),
+        stack_id=stack_id,
+        commit_sha="abc123",
+        trigger="manual",
+        state=RunState.apply_running.value,
+    )
+    stack = make_stack(
+        id=stack_id,
+        git_url="https://example.test/repo.git",
+        executor=ExecutorKind.kubernetes.value,
+    )
+
+    KubernetesExecutor().start(run, stack, "check", "shr_token", execution_id=uuid.uuid4())
+
+    job = batch.create_namespaced_job.call_args.args[1]
+    container = job.spec.template.spec.containers[0]
+    assert container.image == get_settings().runner_image
+    assert container.image_pull_policy == "Always"
 
 
 def test_cleanup_removes_job_and_secret(monkeypatch):

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     seed_demo: bool = False
     demo_path: str = ""
     k8s_namespace: str = "stablehand-runners"
-    runner_image: str = "stablehand:latest"
+    runner_image: str = "ghcr.io/ianunruh/stablehand:main"
     secrets_dir: str = ""
 
     @property
