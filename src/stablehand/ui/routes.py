@@ -259,6 +259,7 @@ def stack_create(
             approver_groups=approver_groups,
         )
     except (StackError, ValueError) as exc:
+        db.rollback()
         message = (
             exc.message if isinstance(exc, StackError) else "Choose approvers from the user list."
         )
@@ -346,6 +347,7 @@ def stack_update(
             approver_groups=approver_groups,
         )
     except (StackError, ValueError) as exc:
+        db.rollback()
         message = (
             exc.message if isinstance(exc, StackError) else "Choose approvers from the user list."
         )
@@ -375,6 +377,7 @@ def stack_run(
         commit = resolve_commit(stack)
         run = create_run(db, stack, commit_sha=commit, trigger=Trigger.manual, user=user)
     except (SourceError, RunError) as exc:
+        db.rollback()
         return _redirect(f"/stacks/{stack.id}", error=exc.message)
     return RedirectResponse(f"/runs/{run.id}", status_code=303)
 
@@ -421,6 +424,7 @@ def token_create(
     try:
         plaintext = issue_ci_token(db, stack, user, name, days)
     except StackError as exc:
+        db.rollback()
         return _redirect(f"/stacks/{stack.id}/tokens", error=exc.message)
     response = _redirect(
         f"/stacks/{stack.id}/tokens", notice="Copy the token now. It will not be shown again."
@@ -504,6 +508,7 @@ def run_approve(
     try:
         approve_run(db, run, user, run.stack)
     except RunError as exc:
+        db.rollback()
         return _redirect(f"/runs/{run.id}", error=exc.message)
     return RedirectResponse(f"/runs/{run.id}", status_code=303)
 
@@ -519,6 +524,7 @@ def run_reject(
     try:
         reject_run(db, run, user, run.stack, reason)
     except RunError as exc:
+        db.rollback()
         return _redirect(f"/runs/{run.id}", error=exc.message)
     return RedirectResponse(f"/runs/{run.id}", status_code=303)
 
@@ -552,6 +558,7 @@ def users_update(
             groups=[part.strip() for part in groups.split(",") if part.strip()],
         )
     except AuthError as exc:
+        db.rollback()
         return _redirect("/settings/users", error=exc.message)
     return _redirect("/settings/users", notice="User updated.")
 
@@ -622,7 +629,6 @@ def integrations_delete(
     row = db.get(Integration, integration_id)
     if row is not None:
         db.delete(row)
-        db.commit()
     return _redirect("/settings/integrations", notice="Webhook removed.")
 
 

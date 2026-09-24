@@ -1,19 +1,27 @@
 from __future__ import annotations
 
 import json
-import logging
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from stablehand.config import get_settings
-from stablehand.models import Integration, Run, Stack
+from stablehand.models import (
+    DeliveryStatus,
+    Integration,
+    IntegrationDelivery,
+    Run,
+    Stack,
+)
 from stablehand.security import decrypt_secret, encrypt_secret, hmac_sha256
 
-logger = logging.getLogger(__name__)
-
 WEBHOOK = "webhook"
+NEEDS_APPROVAL = "run.needs_approval"
+
+
+class WebhookError(Exception):
+    pass
 
 
 def list_integrations(session: Session) -> list[Integration]:
@@ -41,16 +49,18 @@ def save_webhook(
         integration.name = name.strip()
         integration.enabled = enabled
         integration.config = config
-    session.commit()
+    session.flush()
     return integration
 
 
-def notify_needs_approval(session: Session, run: Run) -> None:
+def enqueue_needs_approval(session: Session, run: Run) -> None:
     stack = session.get(Stack, run.stack_id)
     if stack is None:
         return
+    if not run.check_fingerprint:
+        raise ValueError("A needs-approval run must have a fingerprint.")
     payload = {
-        "event": "run.needs_approval",
+        "event": NEEDS_APPROVAL,
         "run_id": str(run.id),
         "stack_id": str(stack.id),
         "stack_name": stack.name,
@@ -61,7 +71,26 @@ def notify_needs_approval(session: Session, run: Run) -> None:
     for integration in session.scalars(select(Integration).where(Integration.enabled.is_(True))):
         if integration.kind != WEBHOOK:
             continue
-        _post_webhook(integration, payload)
+        existing = session.scalar(
+            select(IntegrationDelivery.id).where(
+                IntegrationDelivery.integration_id == integration.id,
+                IntegrationDelivery.run_id == run.id,
+                IntegrationDelivery.event == NEEDS_APPROVAL,
+                IntegrationDelivery.fingerprint == run.check_fingerprint,
+            )
+        )
+        if existing is not None:
+            continue
+        session.add(
+            IntegrationDelivery(
+                integration_id=integration.id,
+                run_id=run.id,
+                event=NEEDS_APPROVAL,
+                fingerprint=run.check_fingerprint,
+                payload=payload,
+                status=DeliveryStatus.pending.value,
+            )
+        )
 
 
 def _counts(run: Run) -> dict:
@@ -75,17 +104,21 @@ def _counts(run: Run) -> dict:
     }
 
 
-def _post_webhook(integration: Integration, payload: dict) -> None:
+def send_delivery(delivery: IntegrationDelivery, integration: Integration) -> None:
     url = (integration.config or {}).get("url")
     if not url:
-        return
-    body = json.dumps(payload).encode()
-    headers = {"Content-Type": "application/json"}
+        raise WebhookError("Webhook URL is missing.")
+    body = json.dumps(delivery.payload, separators=(",", ":"), sort_keys=True).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "X-Stablehand-Delivery": str(delivery.id),
+    }
     encrypted = (integration.config or {}).get("secret_encrypted") or ""
     secret = decrypt_secret(encrypted) if encrypted else ""
     if secret:
         headers["X-Stablehand-Signature"] = "sha256=" + hmac_sha256(secret, body)
     try:
-        httpx.post(url, content=body, headers=headers, timeout=10)
-    except httpx.HTTPError:
-        logger.exception("webhook %s failed", integration.name)
+        response = httpx.post(url, content=body, headers=headers, timeout=10)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise WebhookError(str(exc)) from exc

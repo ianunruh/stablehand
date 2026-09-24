@@ -2,10 +2,11 @@ import uuid
 from unittest.mock import Mock
 
 import pytest
+from kubernetes.client import ApiException
 
 from stablehand.executors import kubernetes
 from stablehand.executors.kubernetes import KubernetesExecutor, _resource_names
-from stablehand.models import ExecutorKind, Run, RunState, Stack
+from stablehand.models import Execution, ExecutorKind, Run, RunState, Stack
 
 
 def test_resource_names_are_unique_per_execution():
@@ -73,5 +74,43 @@ def test_cleanup_removes_job_and_secret(monkeypatch):
     )
     core.delete_namespaced_secret.assert_called_once_with(
         name="secret-name",
+        namespace="stablehand-runners",
+    )
+
+
+def test_recover_finds_job_by_execution_id(monkeypatch):
+    batch = Mock()
+    monkeypatch.setattr(kubernetes, "_load_config", lambda: None)
+    monkeypatch.setattr(kubernetes.client, "BatchV1Api", lambda: batch)
+    run_id = uuid.uuid4()
+    execution_id = uuid.uuid4()
+    run = Run(id=run_id)
+    execution = Execution(id=execution_id, phase="apply")
+    stack = Stack(id=uuid.uuid4())
+    job_name, secret_name = _resource_names(run_id, execution_id, "apply")
+
+    recovered = KubernetesExecutor().recover(execution, run, stack)
+
+    assert recovered == (job_name, secret_name)
+    batch.read_namespaced_job.assert_called_once_with(job_name, "stablehand-runners")
+
+
+def test_recover_missing_job_removes_orphaned_secret(monkeypatch):
+    core = Mock()
+    batch = Mock()
+    batch.read_namespaced_job.side_effect = ApiException(status=404)
+    monkeypatch.setattr(kubernetes, "_load_config", lambda: None)
+    monkeypatch.setattr(kubernetes.client, "CoreV1Api", lambda: core)
+    monkeypatch.setattr(kubernetes.client, "BatchV1Api", lambda: batch)
+    run_id = uuid.uuid4()
+    execution_id = uuid.uuid4()
+    run = Run(id=run_id)
+    execution = Execution(id=execution_id, phase="check")
+    stack = Stack(id=uuid.uuid4())
+    _, secret_name = _resource_names(run_id, execution_id, "check")
+
+    assert KubernetesExecutor().recover(execution, run, stack) is None
+    core.delete_namespaced_secret.assert_called_once_with(
+        name=secret_name,
         namespace="stablehand-runners",
     )

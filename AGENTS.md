@@ -2,6 +2,18 @@
 
 A web process serves the UI and APIs. A worker process owns schedules and execution. Both use one synchronous SQLAlchemy 2 session style against Postgres (`psycopg`). Route handlers that touch the database are plain `def` functions so FastAPI runs them in a threadpool. Do not introduce async SQLAlchemy.
 
+HTTP requests and worker use cases own transaction boundaries. Domain services mutate or flush but never commit. A UI route that catches a domain error and returns normally must roll back first.
+
+## Concurrency and durable effects
+
+Postgres is the source of truth for lifecycle coordination. Enforce invariants with constraints or partial unique indexes, not application-level read-then-write checks. Change run state with compare-and-set updates (`UPDATE ... WHERE state = expected`) and treat a zero row count as a lost race. Keep the state change and its related database writes, such as token mutation, execution intent, or outbox enqueue, in one transaction.
+
+External systems cannot participate in a database transaction. Persist durable intent and commit before starting a subprocess, Kubernetes Job, or HTTP request; perform the side effect outside a transaction; then record its outcome in a new short transaction. Give retryable effects stable identities and idempotent recovery. Local subprocess starts are not safely retryable after an uncertain result.
+
+Deliver integrations through a transactional outbox with at-least-once semantics. Never make inline webhook calls from lifecycle services. Consumers must be able to deduplicate by delivery ID.
+
+Any new concurrency-sensitive invariant needs a PostgreSQL concurrency test. SQLite remains useful for fast behavior tests but is not evidence that locking, uniqueness, or compare-and-set behavior is correct.
+
 The runner (`stablehand-runner`) is the only code that shells out to pyinfra. `plans/normalize.py` is the only module that knows pyinfra's JSON shape. Templates and integrations see the normalized document.
 
 ## Run lifecycle

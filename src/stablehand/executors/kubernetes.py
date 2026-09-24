@@ -8,7 +8,7 @@ from kubernetes.client import ApiException
 
 from stablehand.config import get_settings
 from stablehand.executors.base import Executor, runner_env
-from stablehand.models import Run, Stack
+from stablehand.models import Execution, Run, Stack
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +105,22 @@ class KubernetesExecutor(Executor):
         if status is not None and status.succeeded:
             return "finished"
         return "running"
+
+    def recover(
+        self, execution: Execution, run: Run, stack: Stack
+    ) -> tuple[str, str | None] | None:
+        del stack
+        _load_config()
+        namespace = get_settings().k8s_namespace
+        job_name, secret_name = _resource_names(run.id, execution.id, execution.phase)
+        try:
+            client.BatchV1Api().read_namespaced_job(job_name, namespace)
+        except ApiException as exc:
+            if exc.status != 404:
+                raise
+            _delete_secret(client.CoreV1Api(), secret_name, namespace)
+            return None
+        return job_name, secret_name
 
     def cleanup(self, ref: str, secret_name: str | None) -> None:
         _load_config()

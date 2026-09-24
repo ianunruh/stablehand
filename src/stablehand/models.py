@@ -14,8 +14,10 @@ from sqlalchemy import (
     MetaData,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -68,6 +70,7 @@ ACTIVE_STATES = {
     RunState.apply_queued,
     RunState.apply_running,
 }
+ACTIVE_STATE_VALUES = tuple(sorted(state.value for state in ACTIVE_STATES))
 
 LIVE_STATES = {
     RunState.check_queued,
@@ -195,6 +198,19 @@ class Run(Base):
     __table_args__ = (
         Index("ix_runs_stack_id", "stack_id"),
         Index("ix_runs_state", "state"),
+        Index(
+            "uq_runs_one_active_per_stack",
+            "stack_id",
+            unique=True,
+            postgresql_where=text(
+                "state IN ('apply_queued', 'apply_running', 'check_queued', "
+                "'check_running', 'needs_approval')"
+            ),
+            sqlite_where=text(
+                "state IN ('apply_queued', 'apply_running', 'check_queued', "
+                "'check_running', 'needs_approval')"
+            ),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
@@ -242,6 +258,9 @@ class Run(Base):
     executions: Mapped[list[Execution]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
+    deliveries: Mapped[list[IntegrationDelivery]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
 
 
 class RunToken(Base):
@@ -270,8 +289,25 @@ class RunLog(Base):
     run: Mapped[Run] = relationship(back_populates="logs")
 
 
+class ExecutionStatus(enum.StrEnum):
+    pending = "pending"
+    running = "running"
+    finished = "finished"
+    failed = "failed"
+
+
 class Execution(Base):
     __tablename__ = "executions"
+    __table_args__ = (
+        Index(
+            "uq_executions_one_active_per_phase",
+            "run_id",
+            "phase",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'running')"),
+            sqlite_where=text("status IN ('pending', 'running')"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
     run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"))
@@ -279,7 +315,7 @@ class Execution(Base):
     backend: Mapped[str] = mapped_column(String(32))
     ref: Mapped[str] = mapped_column(String(200), default="")
     secret_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    status: Mapped[str] = mapped_column(String(32), default="running")
+    status: Mapped[str] = mapped_column(String(32), default=ExecutionStatus.pending.value)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -295,3 +331,49 @@ class Integration(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    deliveries: Mapped[list[IntegrationDelivery]] = relationship(
+        back_populates="integration", cascade="all, delete-orphan"
+    )
+
+
+class DeliveryStatus(enum.StrEnum):
+    pending = "pending"
+    delivered = "delivered"
+    failed = "failed"
+
+
+class IntegrationDelivery(Base):
+    __tablename__ = "integration_deliveries"
+    __table_args__ = (
+        UniqueConstraint(
+            "integration_id",
+            "run_id",
+            "event",
+            "fingerprint",
+            name="uq_integration_deliveries_dedupe",
+        ),
+        Index("ix_integration_deliveries_due", "status", "next_attempt_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
+    integration_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("integrations.id", ondelete="CASCADE")
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"))
+    event: Mapped[str] = mapped_column(String(64))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(32), default=DeliveryStatus.pending.value)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    integration: Mapped[Integration] = relationship(back_populates="deliveries")
+    run: Mapped[Run] = relationship(back_populates="deliveries")

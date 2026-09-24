@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import logging
-
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from stablehand.integrations.service import notify_needs_approval
-from stablehand.models import ACTIVE_STATES, Run, RunLog, RunState, RunToken, Stack, Trigger, User
+from stablehand.integrations.service import enqueue_needs_approval
+from stablehand.models import Run, RunLog, RunState, RunToken, Stack, Trigger, User
 from stablehand.plans.normalize import fingerprint, normalize
+from stablehand.runs.transitions import transition_run
 from stablehand.security import after, aware, hash_token, new_token, utcnow
-
-logger = logging.getLogger(__name__)
 
 CHECK = "check"
 APPLY = "apply"
@@ -41,13 +39,6 @@ def create_run(
     trigger: Trigger | str,
     user: User | None,
 ) -> Run:
-    active = session.scalar(
-        select(Run).where(
-            Run.stack_id == stack.id, Run.state.in_([state.value for state in ACTIVE_STATES])
-        )
-    )
-    if active is not None:
-        raise RunError("This stack already has an active run.")
     run = Run(
         stack_id=stack.id,
         commit_sha=commit_sha,
@@ -56,8 +47,14 @@ def create_run(
         state=RunState.check_queued.value,
         updated_at=utcnow(),
     )
-    session.add(run)
-    session.commit()
+    try:
+        with session.begin_nested():
+            session.add(run)
+            session.flush()
+    except IntegrityError as exc:
+        if _active_run_conflict(exc):
+            raise RunError("This stack already has an active run.") from exc
+        raise
     session.refresh(run)
     return run
 
@@ -78,12 +75,21 @@ def approve_run(session: Session, run: Run, user: User, stack: Stack) -> None:
     message = approval_error(run, user, stack)
     if message:
         raise RunError(message)
-    run.state = RunState.apply_queued.value
-    run.approved_by_id = user.id
-    run.approved_at = utcnow()
-    run.approved_fingerprint = run.check_fingerprint
-    run.updated_at = utcnow()
-    session.commit()
+    applied = transition_run(
+        session,
+        run.id,
+        RunState.needs_approval,
+        RunState.apply_queued,
+        {
+            "approved_by_id": user.id,
+            "approved_at": utcnow(),
+            "approved_fingerprint": run.check_fingerprint,
+        },
+    )
+    if not applied:
+        session.refresh(run)
+        raise RunError("This run is not waiting for approval.")
+    session.refresh(run)
 
 
 def reject_run(session: Session, run: Run, user: User, stack: Stack, reason: str) -> None:
@@ -91,12 +97,21 @@ def reject_run(session: Session, run: Run, user: User, stack: Stack, reason: str
         raise RunError("This run is not waiting for approval.")
     if not _user_on_allow_list(stack, user):
         raise RunError("You are not allowed to reject this stack.")
-    run.state = RunState.rejected.value
-    run.rejected_by_id = user.id
-    run.rejected_at = utcnow()
-    run.reject_reason = reason.strip() or None
-    run.updated_at = utcnow()
-    session.commit()
+    applied = transition_run(
+        session,
+        run.id,
+        RunState.needs_approval,
+        RunState.rejected,
+        {
+            "rejected_by_id": user.id,
+            "rejected_at": utcnow(),
+            "reject_reason": reason.strip() or None,
+        },
+    )
+    if not applied:
+        session.refresh(run)
+        raise RunError("This run is not waiting for approval.")
+    session.refresh(run)
 
 
 def issue_run_token(session: Session, run: Run, phase: str) -> str:
@@ -109,7 +124,7 @@ def issue_run_token(session: Session, run: Run, phase: str) -> str:
             expires_at=after(hours=6),
         )
     )
-    session.commit()
+    session.flush()
     return plaintext
 
 
@@ -117,7 +132,6 @@ def append_log(session: Session, run: Run, phase: str, body: str) -> None:
     if not body:
         return
     session.add(RunLog(run_id=run.id, phase=phase, body=body))
-    session.commit()
 
 
 def log_text(run: Run, phase: str | None = None) -> str:
@@ -136,36 +150,37 @@ def ingest_check_result(
 ) -> None:
     if run.state != RunState.check_running.value:
         raise RunError("This run is not checking.")
-    if stderr:
-        append_log(session, run, CHECK, stderr)
     if not raw:
-        run.state = RunState.check_failed.value
-        run.error = stderr.strip()[-2000:] or f"pyinfra exited {exit_code} without a plan."
-        run.updated_at = utcnow()
-        _revoke(session, run, CHECK)
-        session.commit()
-        return
-    document = normalize(raw, inventory_hosts, stderr)
-    run.check_raw = raw
-    run.check_document = document
-    run.check_fingerprint = fingerprint(document)
-    run.approval_blocked = bool(document["blocked"])
-    run.blocked_reason = _blocked_reason(document)
-    if not inventory_hosts:
-        run.state = RunState.check_failed.value
-        run.error = "The inventory did not contain any hosts."
-    elif exit_code != 0 and not document["hosts"]:
-        run.state = RunState.check_failed.value
-        run.error = stderr.strip()[-2000:] or f"pyinfra exited {exit_code}."
-    elif document["counts"]["change"] == 0 and not document["blocked"]:
-        run.state = RunState.unchanged.value
+        next_state = RunState.check_failed
+        values = {"error": stderr.strip()[-2000:] or f"pyinfra exited {exit_code} without a plan."}
     else:
-        run.state = RunState.needs_approval.value
-    run.updated_at = utcnow()
+        document = normalize(raw, inventory_hosts, stderr)
+        values = {
+            "check_raw": raw,
+            "check_document": document,
+            "check_fingerprint": fingerprint(document),
+            "approval_blocked": bool(document["blocked"]),
+            "blocked_reason": _blocked_reason(document),
+            "error": None,
+        }
+        if not inventory_hosts:
+            next_state = RunState.check_failed
+            values["error"] = "The inventory did not contain any hosts."
+        elif exit_code != 0 and not document["hosts"]:
+            next_state = RunState.check_failed
+            values["error"] = stderr.strip()[-2000:] or f"pyinfra exited {exit_code}."
+        elif document["counts"]["change"] == 0 and not document["blocked"]:
+            next_state = RunState.unchanged
+        else:
+            next_state = RunState.needs_approval
+    if not transition_run(session, run.id, RunState.check_running, next_state, values):
+        session.refresh(run)
+        raise RunError("This run is not checking.")
+    append_log(session, run, CHECK, stderr)
     _revoke(session, run, CHECK)
-    session.commit()
+    session.refresh(run)
     if run.state == RunState.needs_approval.value:
-        _notify(session, run)
+        enqueue_needs_approval(session, run)
 
 
 def ingest_apply_precheck(
@@ -179,37 +194,57 @@ def ingest_apply_precheck(
 ) -> bool:
     if run.state != RunState.apply_running.value:
         raise RunError("This run is not applying.")
-    if stderr:
-        append_log(session, run, APPLY, stderr)
     if not raw or exit_code != 0:
-        run.state = RunState.apply_failed.value
-        run.error = stderr.strip()[-2000:] or "The apply-time check failed."
-        run.updated_at = utcnow()
+        applied = transition_run(
+            session,
+            run.id,
+            RunState.apply_running,
+            RunState.apply_failed,
+            {"error": stderr.strip()[-2000:] or "The apply-time check failed."},
+        )
+        if not applied:
+            session.refresh(run)
+            raise RunError("This run is not applying.")
+        append_log(session, run, APPLY, stderr)
         _revoke(session, run, APPLY)
-        session.commit()
+        session.refresh(run)
         return False
     document = normalize(raw, inventory_hosts, stderr)
     current = fingerprint(document)
     if current != run.approved_fingerprint:
-        run.previous_check_document = run.check_document
-        run.check_document = document
-        run.check_raw = raw
-        run.check_fingerprint = current
-        run.approved_fingerprint = None
-        run.approved_by_id = None
-        run.approved_at = None
-        run.approval_blocked = bool(document["blocked"])
-        run.blocked_reason = _blocked_reason(document) or (
+        blocked_reason = _blocked_reason(document) or (
             "The change set moved after approval. Review the new check."
         )
-        if not run.approval_blocked:
-            run.blocked_reason = "The change set moved after approval. Review the new check."
-        run.state = RunState.needs_approval.value
-        run.updated_at = utcnow()
+        applied = transition_run(
+            session,
+            run.id,
+            RunState.apply_running,
+            RunState.needs_approval,
+            {
+                "previous_check_document": run.check_document,
+                "check_document": document,
+                "check_raw": raw,
+                "check_fingerprint": current,
+                "approved_fingerprint": None,
+                "approved_by_id": None,
+                "approved_at": None,
+                "approval_blocked": bool(document["blocked"]),
+                "blocked_reason": blocked_reason,
+            },
+        )
+        if not applied:
+            session.refresh(run)
+            raise RunError("This run is not applying.")
+        append_log(session, run, APPLY, stderr)
         _revoke(session, run, APPLY)
-        session.commit()
-        _notify(session, run)
+        session.refresh(run)
+        enqueue_needs_approval(session, run)
         return False
+    current_state = session.scalar(select(Run.state).where(Run.id == run.id))
+    if current_state != RunState.apply_running.value:
+        session.refresh(run)
+        raise RunError("This run is not applying.")
+    append_log(session, run, APPLY, stderr)
     return True
 
 
@@ -224,49 +259,49 @@ def ingest_apply_result(
 ) -> None:
     if run.state != RunState.apply_running.value:
         raise RunError("This run is not applying.")
-    if stderr:
-        append_log(session, run, APPLY, stderr)
     if not raw:
-        run.state = RunState.apply_failed.value
-        run.error = stderr.strip()[-2000:] or f"pyinfra exited {exit_code} without results."
-        run.updated_at = utcnow()
-        _revoke(session, run, APPLY)
-        session.commit()
-        return
-    document = normalize(raw, inventory_hosts, stderr)
-    run.apply_raw = raw
-    run.apply_document = document
-    if exit_code != 0 or document["counts"]["failed"]:
-        run.state = RunState.apply_failed.value
-        run.error = "One or more hosts failed."
+        next_state = RunState.apply_failed
+        values = {"error": stderr.strip()[-2000:] or f"pyinfra exited {exit_code} without results."}
     else:
-        run.state = RunState.succeeded.value
-        run.error = None
-    run.updated_at = utcnow()
+        document = normalize(raw, inventory_hosts, stderr)
+        values = {"apply_raw": raw, "apply_document": document}
+        if exit_code != 0 or document["counts"]["failed"]:
+            next_state = RunState.apply_failed
+            values["error"] = "One or more hosts failed."
+        else:
+            next_state = RunState.succeeded
+            values["error"] = None
+    if not transition_run(session, run.id, RunState.apply_running, next_state, values):
+        session.refresh(run)
+        raise RunError("This run is not applying.")
+    append_log(session, run, APPLY, stderr)
     _revoke(session, run, APPLY)
-    session.commit()
+    session.refresh(run)
 
 
-def fail_run(session: Session, run: Run, message: str) -> None:
+def fail_run(session: Session, run: Run, message: str) -> bool:
     if run.state == RunState.check_running.value:
-        run.state = RunState.check_failed.value
+        from_state = RunState.check_running
+        to_state = RunState.check_failed
+        phase = CHECK
     elif run.state == RunState.apply_running.value:
-        run.state = RunState.apply_failed.value
+        from_state = RunState.apply_running
+        to_state = RunState.apply_failed
+        phase = APPLY
     else:
-        return
-    run.error = message
-    run.updated_at = utcnow()
-    session.commit()
+        return False
+    applied = transition_run(session, run.id, from_state, to_state, {"error": message})
+    if applied:
+        _revoke(session, run, phase)
+        session.refresh(run)
+    return applied
 
 
 def claim(session: Session, run: Run, from_state: RunState, to_state: RunState) -> bool:
-    result = session.execute(
-        update(Run)
-        .where(Run.id == run.id, Run.state == from_state.value)
-        .values(state=to_state.value, updated_at=utcnow())
-    )
-    session.commit()
-    return result.rowcount == 1
+    applied = transition_run(session, run.id, from_state, to_state)
+    if applied:
+        session.refresh(run)
+    return applied
 
 
 def _user_on_allow_list(stack: Stack, user: User) -> bool:
@@ -300,11 +335,11 @@ def _revoke(session: Session, run: Run, phase: str) -> None:
     )
 
 
-def _notify(session: Session, run: Run) -> None:
-    try:
-        notify_needs_approval(session, run)
-    except Exception:
-        logger.exception("integration notification failed")
+def _active_run_conflict(exc: IntegrityError) -> bool:
+    diagnostic = getattr(exc.orig, "diag", None)
+    if getattr(diagnostic, "constraint_name", None) == "uq_runs_one_active_per_stack":
+        return True
+    return "UNIQUE constraint failed: runs.stack_id" in str(exc.orig)
 
 
 def lookup_run_token(session: Session, plaintext: str, phase: str | None = None) -> Run | None:

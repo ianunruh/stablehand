@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: stablehand
+          POSTGRES_PASSWORD: stablehand
+          POSTGRES_DB: stablehand_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U stablehand -d stablehand_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      STABLEHAND_DATABASE_URL: postgresql+psycopg://stablehand:stablehand@localhost:5432/stablehand_test
+      STABLEHAND_SECRET_KEY: ci-secret-key
+      STABLEHAND_ADMIN_EMAIL: ""
+      STABLEHAND_ADMIN_PASSWORD: ""
+      STABLEHAND_SEED_DEMO: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff format --check .
+      - run: ruff check .
+      - run: pytest
+      - run: alembic upgrade head
+      - run: alembic check

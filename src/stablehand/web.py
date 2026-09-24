@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 
 from stablehand.auth.service import SESSION_COOKIE, ensure_oidc
 from stablehand.config import get_settings
-from stablehand.db import get_sessionmaker
+from stablehand.db import session_scope
 from stablehand.models import Role, Stack, User
 from stablehand.runs.machine import router as machine_router
 from stablehand.security import csrf_matches, hash_password
@@ -79,8 +79,7 @@ def create_app() -> FastAPI:
 
 def bootstrap() -> None:
     settings = get_settings()
-    db = get_sessionmaker()()
-    try:
+    with session_scope() as db:
         user_count = int(db.scalar(select(func.count()).select_from(User)) or 0)
         if user_count == 0 and settings.admin_email and settings.admin_password:
             db.add(
@@ -93,7 +92,7 @@ def bootstrap() -> None:
                     enabled=True,
                 )
             )
-            db.commit()
+            db.flush()
         ensure_oidc(db)
         stack_count = int(db.scalar(select(func.count()).select_from(Stack)) or 0)
         if settings.seed_demo and stack_count == 0:
@@ -115,8 +114,6 @@ def bootstrap() -> None:
                 approver_user_ids=[],
                 approver_groups="",
             )
-    finally:
-        db.close()
 
 
 def main() -> None:

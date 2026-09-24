@@ -36,7 +36,6 @@ def start_session(db: Session, user: User) -> AuthSession:
         expires_at=after(days=SESSION_DAYS),
     )
     db.add(row)
-    db.commit()
     return row
 
 
@@ -60,7 +59,6 @@ def logout(db: Session, request: Request) -> None:
     row = db.get(AuthSession, session_id)
     if row is not None:
         db.delete(row)
-        db.commit()
 
 
 def ensure_oidc(db: Session) -> OidcSettings:
@@ -68,7 +66,7 @@ def ensure_oidc(db: Session) -> OidcSettings:
     if row is None:
         row = OidcSettings(id=1)
         db.add(row)
-        db.commit()
+        db.flush()
         db.refresh(row)
     return row
 
@@ -89,7 +87,6 @@ def save_oidc(
     row.scopes = scopes.strip() or "openid email profile"
     if client_secret.strip():
         row.client_secret_encrypted = encrypt_secret(client_secret.strip())
-    db.commit()
 
 
 def update_user(
@@ -113,7 +110,6 @@ def update_user(
     user.enabled = enabled
     user.role = role
     user.groups = groups
-    db.commit()
 
 
 def accept_oidc_user(db: Session, *, subject: str, email: str, name: str) -> User:
@@ -131,14 +127,13 @@ def accept_oidc_user(db: Session, *, subject: str, email: str, name: str) -> Use
             enabled=False,
         )
         db.add(existing)
-        db.commit()
+        db.flush()
         db.refresh(existing)
         return existing
     if existing.oidc_subject is None:
         existing.oidc_subject = subject
     if name and not existing.name:
         existing.name = name
-    db.commit()
     return existing
 
 

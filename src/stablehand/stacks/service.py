@@ -94,7 +94,7 @@ def save_stack(
             stack.approvers.append(StackApprover(user_id=uuid.UUID(str(user_id))))
     for group in _groups(approver_groups):
         stack.approvers.append(StackApprover(group_name=group))
-    session.commit()
+    session.flush()
     session.refresh(stack)
     return stack
 
@@ -122,7 +122,7 @@ def issue_ci_token(
             created_by_id=user.id,
         )
     )
-    session.commit()
+    session.flush()
     return plaintext
 
 
@@ -131,7 +131,6 @@ def revoke_ci_token(session: Session, token_id: uuid.UUID) -> None:
     if token is None or token.revoked_at is not None:
         return
     token.revoked_at = utcnow()
-    session.commit()
 
 
 def user_choices(session: Session) -> list[User]:

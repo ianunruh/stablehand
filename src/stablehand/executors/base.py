@@ -4,7 +4,7 @@ import os
 import uuid
 
 from stablehand.config import get_settings
-from stablehand.models import Run, Stack
+from stablehand.models import Execution, Run, Stack
 
 
 class Executor:
@@ -23,6 +23,11 @@ class Executor:
     def poll(self, ref: str, secret_name: str | None) -> str:
         """Return running, succeeded, or failed."""
         raise NotImplementedError
+
+    def recover(
+        self, execution: Execution, run: Run, stack: Stack
+    ) -> tuple[str, str | None] | None:
+        return None
 
     def cleanup(self, ref: str, secret_name: str | None) -> None:
         return None

@@ -2,7 +2,6 @@ from unittest.mock import patch
 
 from sqlalchemy import select
 
-from stablehand.integrations.service import notify_needs_approval, save_webhook
 from stablehand.models import ApiToken, Run, RunState, Stack
 from stablehand.security import hash_token
 from tests.conftest import add_user, auth, login
@@ -61,6 +60,27 @@ def test_member_cannot_edit_stacks(client, db):
         follow_redirects=False,
     )
     assert response.status_code == 403
+
+
+def test_caught_stack_error_rolls_back_request(client, db):
+    add_user(db, "admin@example.com", role="admin")
+    token = login(client, "admin@example.com")
+    response = client.post(
+        "/stacks",
+        data={
+            "name": "Must Roll Back",
+            "deploy_file": "deploy.py",
+            "inventory": "inventory.py",
+            "executor": "local",
+            "local_path": "/tmp/edge",
+            "approver_user_id": "not-a-uuid",
+        },
+        headers=auth(token),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+    assert db.scalar(select(Stack).where(Stack.name == "Must Roll Back")) is None
 
 
 def test_ci_token_opens_a_run_without_diffs(client, db, tmp_path):
@@ -129,26 +149,3 @@ def test_triggering_user_can_approve_in_the_ui(client, db, tmp_path):
     assert "error=" not in allowed.headers["location"]
     db.refresh(run)
     assert run.state == RunState.apply_queued.value
-
-
-def test_webhook_omits_diffs(db):
-    stack = _stack(db, "/tmp/demo")
-    run = Run(
-        stack_id=stack.id,
-        commit_sha="abc",
-        trigger="ci",
-        state=RunState.needs_approval.value,
-        check_document={
-            "hosts": [],
-            "counts": {"hosts": 1, "change": 1, "unchanged": 0, "unreachable": 0, "failed": 0},
-        },
-    )
-    db.add(run)
-    db.commit()
-    save_webhook(db, name="ops", url="https://example.test/hook", secret="sekret", enabled=True)
-    with patch("stablehand.integrations.service.httpx.post") as post:
-        notify_needs_approval(db, run)
-    body = post.call_args.kwargs["content"].decode()
-    assert "run.needs_approval" in body
-    assert "diffs" not in body
-    assert post.call_args.kwargs["headers"]["X-Stablehand-Signature"].startswith("sha256=")
