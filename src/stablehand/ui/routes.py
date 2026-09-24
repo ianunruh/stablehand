@@ -233,6 +233,7 @@ def stack_create(
     name: Annotated[str, Form()] = "",
     deploy_file: Annotated[str, Form()] = "",
     inventory: Annotated[str, Form()] = "",
+    default_limit: Annotated[str, Form()] = "",
     executor: Annotated[str, Form()] = "local",
     git_url: Annotated[str, Form()] = "",
     git_ref: Annotated[str, Form()] = "",
@@ -249,6 +250,7 @@ def stack_create(
             name=name,
             deploy_file=deploy_file,
             inventory=inventory,
+            default_limit=default_limit,
             executor=executor,
             git_url=git_url,
             git_ref=git_ref,
@@ -320,6 +322,7 @@ def stack_update(
     name: Annotated[str, Form()] = "",
     deploy_file: Annotated[str, Form()] = "",
     inventory: Annotated[str, Form()] = "",
+    default_limit: Annotated[str, Form()] = "",
     executor: Annotated[str, Form()] = "local",
     git_url: Annotated[str, Form()] = "",
     git_ref: Annotated[str, Form()] = "",
@@ -337,6 +340,7 @@ def stack_update(
             name=name,
             deploy_file=deploy_file,
             inventory=inventory,
+            default_limit=default_limit,
             executor=executor,
             git_url=git_url,
             git_ref=git_ref,
@@ -371,11 +375,14 @@ def stack_run(
     stack_id: uuid.UUID,
     user: User = Depends(require_user),
     db: Session = Depends(get_session),
+    limit: Annotated[str | None, Form()] = None,
 ):
     stack = _stack_or_404(db, stack_id)
     try:
         commit = resolve_commit(stack)
-        run = create_run(db, stack, commit_sha=commit, trigger=Trigger.manual, user=user)
+        run = create_run(
+            db, stack, commit_sha=commit, trigger=Trigger.manual, user=user, limit=limit
+        )
     except (SourceError, RunError) as exc:
         db.rollback()
         return _redirect(f"/stacks/{stack.id}", error=exc.message)
@@ -672,6 +679,7 @@ def _form_state(values: dict) -> dict:
         "name",
         "deploy_file",
         "inventory",
+        "default_limit",
         "executor",
         "git_url",
         "git_ref",

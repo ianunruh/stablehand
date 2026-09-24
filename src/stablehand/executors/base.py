@@ -47,6 +47,7 @@ def runner_env(run: Run, stack: Stack, phase: str, token: str) -> dict[str, str]
         "STABLEHAND_COMMIT": run.commit_sha,
         "STABLEHAND_DEPLOY": stack.deploy_file,
         "STABLEHAND_INVENTORY": stack.inventory,
+        "STABLEHAND_LIMIT": run.limit or "",
         "STABLEHAND_GIT_URL": stack.git_url or "",
         "STABLEHAND_GIT_REF": stack.git_ref or "",
         "STABLEHAND_LOCAL_PATH": stack.local_path or "",

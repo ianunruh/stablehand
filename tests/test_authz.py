@@ -35,6 +35,7 @@ def test_login_and_csrf(client, db):
             "name": "Edge",
             "deploy_file": "deploy.py",
             "inventory": "inventory.py",
+            "default_limit": " web-* , canary ",
             "executor": "local",
             "local_path": "/tmp/edge",
         },
@@ -42,6 +43,9 @@ def test_login_and_csrf(client, db):
         follow_redirects=False,
     )
     assert ok.status_code == 303
+    stack = db.scalar(select(Stack).where(Stack.name == "Edge"))
+    assert stack is not None
+    assert stack.default_limit == "web-*, canary"
 
 
 def test_member_cannot_edit_stacks(client, db):
@@ -129,12 +133,13 @@ def test_ci_token_opens_a_run_without_diffs(client, db, tmp_path):
     opened = client.post(
         f"/api/stacks/{stack.id}/runs",
         headers={"Authorization": f"Bearer {plaintext}"},
-        json={"commit": "local"},
+        json={"commit": "local", "limit": "web-*, canary"},
     )
     assert opened.status_code == 201
     body = opened.json()
     assert "check_document" not in body
     assert body["counts"]["hosts"] == 0
+    assert body["limit"] == "web-*, canary"
     status = client.get(
         f"/api/runs/{body['id']}",
         headers={"Authorization": f"Bearer {plaintext}"},
@@ -155,11 +160,13 @@ def test_triggering_user_can_approve_in_the_ui(client, db, tmp_path):
     with patch("stablehand.ui.routes.resolve_commit", return_value="abc123"):
         started = client.post(
             f"/stacks/{stack.id}/runs",
+            data={"limit": " db-* , canary "},
             headers=auth(token),
             follow_redirects=False,
         )
     assert started.status_code == 303
     run = db.scalar(select(Run))
+    assert run.limit == "db-*, canary"
     run.state = RunState.needs_approval.value
     run.check_fingerprint = "fp"
     run.check_document = {

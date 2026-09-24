@@ -138,6 +138,7 @@ class Stack(Base):
     name: Mapped[str] = mapped_column(String(200))
     deploy_file: Mapped[str] = mapped_column(String(500))
     inventory: Mapped[str] = mapped_column(String(500))
+    default_limit: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     executor: Mapped[str] = mapped_column(String(32), default=ExecutorKind.local.value)
     git_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     git_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -216,6 +217,7 @@ class Run(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
     stack_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("stacks.id", ondelete="CASCADE"))
     commit_sha: Mapped[str] = mapped_column(String(64))
+    limit: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     trigger: Mapped[str] = mapped_column(String(32))
     trigger_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

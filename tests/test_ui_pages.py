@@ -9,6 +9,7 @@ from tests.test_runs import _stack
 def test_operational_pages_render_shared_components_and_metadata(client, db):
     user = add_user(db, "admin@example.com", role=Role.admin.value)
     stack = _stack(db)
+    stack.default_limit = "web-*, canary"
     run = create_run(db, stack, commit_sha="abc123def456", trigger="manual", user=user)
     run.state = RunState.needs_approval.value
     run.check_document = {
@@ -52,6 +53,11 @@ def test_operational_pages_render_shared_components_and_metadata(client, db):
     assert "Recent runs" in detail.text
     assert "1 change" in detail.text
     assert "Manual by admin@example.com" in detail.text
+    assert 'name="limit" value="web-*, canary"' in detail.text
+
+    run_page = client.get(f"/runs/{run.id}")
+    assert run_page.status_code == 200
+    assert 'Limit <span class="sh-mono">web-*, canary</span>' in run_page.text
 
     tokens = client.get(f"/stacks/{stack.id}/tokens")
     assert tokens.status_code == 200

@@ -10,6 +10,7 @@
   {{ ui.field('Name', 'name', f.name if f else (stack.name if stack else ''), required=true) }}
   {{ ui.field('Deploy file', 'deploy_file', f.deploy_file if f else (stack.deploy_file if stack else 'deploy.py')) }}
   {{ ui.field('Inventory', 'inventory', f.inventory if f else (stack.inventory if stack else 'inventory.py')) }}
+  {{ ui.field('Default limit', 'default_limit', f.default_limit if f else (stack.default_limit if stack and stack.default_limit else ''), 'text', 'Comma-separated host or group patterns. Runs inherit this unless overridden.') }}
   {% set executor_value = f.executor if f else (stack.executor if stack else 'local') %}
   {% call ui.select_field('Executor', 'executor') %}
       <option value="local" {% if executor_value == 'local' %}selected{% endif %}>Local subprocess</option>

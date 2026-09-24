@@ -10,6 +10,8 @@ from pathlib import Path
 
 import httpx
 
+from stablehand.limits import limit_patterns
+
 
 def main() -> None:
     phase = os.environ["STABLEHAND_PHASE"]
@@ -91,7 +93,15 @@ def git_env() -> dict[str, str]:
 
 
 def debug_inventory(source: Path) -> tuple[list[str], str]:
-    completed = _pyinfra(source, [os.environ["STABLEHAND_INVENTORY"], "debug-inventory", "--json"])
+    completed = _pyinfra(
+        source,
+        [
+            os.environ["STABLEHAND_INVENTORY"],
+            "debug-inventory",
+            "--json",
+            *_limit_args(),
+        ],
+    )
     raw = _parse_json(completed.stdout)
     hosts: list[str] = []
     if isinstance(raw, list):
@@ -109,6 +119,7 @@ def run_pyinfra(source: Path, *, apply: bool) -> tuple[dict | None, str, int]:
         os.environ["STABLEHAND_DEPLOY"],
         "--diff",
         "--json",
+        *_limit_args(),
     ]
     if apply:
         command.append("--yes")
@@ -116,6 +127,13 @@ def run_pyinfra(source: Path, *, apply: bool) -> tuple[dict | None, str, int]:
         command.append("--dry")
     completed = _pyinfra(source, command)
     return _parse_json(completed.stdout), completed.stderr, completed.returncode
+
+
+def _limit_args() -> list[str]:
+    args: list[str] = []
+    for pattern in limit_patterns(os.environ.get("STABLEHAND_LIMIT")):
+        args.extend(["--limit", pattern])
+    return args
 
 
 def _pyinfra(source: Path, args: list[str]) -> subprocess.CompletedProcess[str]:

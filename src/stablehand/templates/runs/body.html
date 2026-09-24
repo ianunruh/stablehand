@@ -9,6 +9,8 @@
     <span aria-hidden="true">·</span>
     <span>{{ trigger_label(run.trigger) }}{% if run.trigger_user %} by {{ run.trigger_user.email }}{% endif %}</span>
     <span aria-hidden="true">·</span>
+    <span>{% if run.limit %}Limit <span class="sh-mono">{{ run.limit }}</span>{% else %}All hosts{% endif %}</span>
+    <span aria-hidden="true">·</span>
     {{ ui.timestamp(run.created_at, 'Opened') }}
     {% if run_counts.hosts %}<span aria-hidden="true">·</span><span>{{ run_counts.change }} change{% if run_counts.change != 1 %}s{% endif %} across {{ run_counts.hosts }} host{% if run_counts.hosts != 1 %}s{% endif %}</span>{% endif %}
   </div>

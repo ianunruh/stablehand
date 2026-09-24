@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from stablehand.integrations.service import enqueue_needs_approval
+from stablehand.limits import normalize_limit
 from stablehand.models import Run, RunLog, RunState, RunToken, Stack, Trigger, User
 from stablehand.plans.normalize import fingerprint, normalize
 from stablehand.runs.transitions import transition_run
@@ -38,10 +39,16 @@ def create_run(
     commit_sha: str,
     trigger: Trigger | str,
     user: User | None,
+    limit: str | None = None,
 ) -> Run:
+    effective_limit = stack.default_limit if limit is None else limit
+    effective_limit = normalize_limit(effective_limit)
+    if len(effective_limit or "") > 1000:
+        raise RunError("Limit must be 1000 characters or fewer.")
     run = Run(
         stack_id=stack.id,
         commit_sha=commit_sha,
+        limit=effective_limit,
         trigger=trigger.value if isinstance(trigger, Trigger) else trigger,
         trigger_user_id=user.id if user else None,
         state=RunState.check_queued.value,

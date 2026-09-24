@@ -30,6 +30,7 @@ router = APIRouter(prefix="/api")
 
 class RunCreate(BaseModel):
     commit: str | None = None
+    limit: str | None = None
 
 
 class LogIn(BaseModel):
@@ -93,7 +94,9 @@ def open_run(
         except SourceError as exc:
             raise HTTPException(status_code=422, detail=exc.message) from exc
     try:
-        run = create_run(db, stack, commit_sha=commit, trigger=Trigger.ci, user=None)
+        run = create_run(
+            db, stack, commit_sha=commit, trigger=Trigger.ci, user=None, limit=body.limit
+        )
     except RunError as exc:
         raise HTTPException(status_code=409, detail=exc.message) from exc
     return _public_run(run)
@@ -202,6 +205,7 @@ def _public_run(run: Run) -> dict:
         "stack_id": str(run.stack_id),
         "state": run.state,
         "commit": run.commit_sha,
+        "limit": run.limit,
         "trigger": run.trigger,
         "counts": counts_of(run),
         "url": f"{settings.public_url.rstrip('/')}/runs/{run.id}",

@@ -7,6 +7,7 @@ from croniter import croniter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from stablehand.limits import normalize_limit
 from stablehand.models import ApiToken, ExecutorKind, Stack, StackApprover, User
 from stablehand.security import after, hash_token, new_token, token_prefix, utcnow
 
@@ -22,6 +23,7 @@ def validate_stack(
     name: str,
     deploy_file: str,
     inventory: str,
+    default_limit: str,
     executor: str,
     git_url: str,
     git_ref: str,
@@ -32,6 +34,8 @@ def validate_stack(
         raise StackError("Name is required.")
     if not deploy_file.strip() or not inventory.strip():
         raise StackError("Deploy file and inventory are required.")
+    if len(normalize_limit(default_limit) or "") > 1000:
+        raise StackError("Default limit must be 1000 characters or fewer.")
     if executor not in {ExecutorKind.local.value, ExecutorKind.kubernetes.value}:
         raise StackError("Choose a local or Kubernetes executor.")
     if executor == ExecutorKind.kubernetes.value and not git_url.strip():
@@ -52,6 +56,7 @@ def save_stack(
     name: str,
     deploy_file: str,
     inventory: str,
+    default_limit: str,
     executor: str,
     git_url: str,
     git_ref: str,
@@ -65,6 +70,7 @@ def save_stack(
         name=name,
         deploy_file=deploy_file,
         inventory=inventory,
+        default_limit=default_limit,
         executor=executor,
         git_url=git_url,
         git_ref=git_ref,
@@ -77,6 +83,7 @@ def save_stack(
     stack.name = name.strip()
     stack.deploy_file = deploy_file.strip()
     stack.inventory = inventory.strip()
+    stack.default_limit = normalize_limit(default_limit)
     stack.executor = executor
     stack.git_url = git_url.strip() or None
     stack.git_ref = (git_ref.strip() or "main") if stack.git_url else None

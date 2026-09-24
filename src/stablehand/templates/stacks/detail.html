@@ -9,8 +9,9 @@
     <a class="sh-btn sh-btn-secondary" href="/stacks/{{ stack.id }}/edit">Edit</a>
     <a class="sh-btn sh-btn-secondary" href="/stacks/{{ stack.id }}/tokens">Tokens</a>
     {% endif %}
-    <form method="post" action="/stacks/{{ stack.id }}/runs">
+    <form class="flex flex-wrap items-end gap-2" method="post" action="/stacks/{{ stack.id }}/runs">
       {{ ui.csrf() }}
+      {{ ui.field('Limit', 'limit', stack.default_limit or '', 'text', 'Comma-separated patterns. Clear to target all hosts.') }}
       <button class="sh-btn sh-btn-primary" type="submit">Start check</button>
     </form>
 {% endcall %}

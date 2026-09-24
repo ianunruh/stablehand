@@ -6,6 +6,32 @@ import pytest
 from stablehand.runner import main as runner
 
 
+def test_limit_is_applied_to_inventory_check_and_apply(monkeypatch, tmp_path):
+    monkeypatch.setenv("STABLEHAND_INVENTORY", "inventory.py")
+    monkeypatch.setenv("STABLEHAND_DEPLOY", "deploy.py")
+    monkeypatch.setenv("STABLEHAND_LIMIT", "web-*, canary")
+    commands = []
+
+    def pyinfra(source, args):
+        assert source == tmp_path
+        commands.append(args)
+        stdout = "[]" if "debug-inventory" in args else "{}"
+        return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(runner, "_pyinfra", pyinfra)
+
+    runner.debug_inventory(tmp_path)
+    runner.run_pyinfra(tmp_path, apply=False)
+    runner.run_pyinfra(tmp_path, apply=True)
+
+    limit_args = ["--limit", "web-*", "--limit", "canary"]
+    assert commands == [
+        ["inventory.py", "debug-inventory", "--json", *limit_args],
+        ["inventory.py", "deploy.py", "--diff", "--json", *limit_args, "--dry"],
+        ["inventory.py", "deploy.py", "--diff", "--json", *limit_args, "--yes"],
+    ]
+
+
 def test_check_upload_forwards_stderr_without_duplicate_log(monkeypatch, tmp_path):
     monkeypatch.setenv("STABLEHAND_PHASE", "check")
     monkeypatch.setattr(runner, "materialize_source", lambda: nullcontext(tmp_path))

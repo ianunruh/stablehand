@@ -27,6 +27,35 @@ def _stack(db) -> Stack:
     return stack
 
 
+def test_run_snapshots_inherited_overridden_and_cleared_limits(db):
+    stack = _stack(db)
+    stack.default_limit = "web-*, canary"
+    db.commit()
+
+    inherited = create_run(db, stack, commit_sha="one", trigger="schedule", user=None)
+    assert inherited.limit == "web-*, canary"
+
+    inherited.state = RunState.unchanged.value
+    stack.default_limit = "new-default"
+    db.commit()
+    assert inherited.limit == "web-*, canary"
+
+    overridden = create_run(
+        db,
+        stack,
+        commit_sha="two",
+        trigger="manual",
+        user=None,
+        limit=" db-* , api ",
+    )
+    assert overridden.limit == "db-*, api"
+
+    overridden.state = RunState.unchanged.value
+    db.commit()
+    cleared = create_run(db, stack, commit_sha="three", trigger="manual", user=None, limit="")
+    assert cleared.limit is None
+
+
 def test_check_with_changes_waits_for_approval(db):
     stack = _stack(db)
     run = create_run(db, stack, commit_sha="local", trigger="manual", user=None)

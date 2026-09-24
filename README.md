@@ -18,8 +18,10 @@ CI opens a check and can read status, not diffs:
 curl -X POST http://localhost:8000/api/stacks/$STACK_ID/runs \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"commit": "local"}'
+  -d '{"commit": "local", "limit": "web-*, canary"}'
 ```
+
+Omit `limit` to inherit the stack default, or send an empty string to target the full inventory.
 
 ## Development
 

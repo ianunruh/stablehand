@@ -105,6 +105,7 @@ def bootstrap() -> None:
                 name="Demo",
                 deploy_file="deploy.py",
                 inventory="inventory.py",
+                default_limit="",
                 executor="local",
                 git_url="",
                 git_ref="",
