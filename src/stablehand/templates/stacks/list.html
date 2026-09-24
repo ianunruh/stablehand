@@ -2,29 +2,36 @@
 {% import "components/macros.html" as ui %}
 {% block title %}Stacks · Stablehand{% endblock %}
 {% block content %}
-<div class="flex items-center justify-between">
-  <h1 class="text-xl font-semibold">Stacks</h1>
+{% call ui.page_header('Stacks', 'Deployment definitions, schedules, and recent check activity.') %}
   {% if user.role == 'admin' %}
-  <a class="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white" href="/stacks/new">New stack</a>
+  <a class="sh-btn sh-btn-primary" href="/stacks/new">New stack</a>
   {% endif %}
-</div>
-<ul class="mt-6 divide-y divide-zinc-200 overflow-hidden rounded-md border border-zinc-200 bg-white">
+{% endcall %}
+<section class="sh-section" aria-label="Stacks">
+<ul class="sh-list">
   {% for stack in stacks %}
   <li>
-    <a class="flex items-center justify-between px-4 py-3 hover:bg-zinc-50" href="/stacks/{{ stack.id }}">
-      <span>
-        <span class="font-medium">{{ stack.name }}</span>
-        <span class="mt-1 block text-xs text-zinc-500">{{ stack.executor }}</span>
+    <a class="sh-list-row" href="/stacks/{{ stack.id }}">
+      <span class="sh-list-primary">
+        <span class="sh-list-title">{{ stack.name }}</span>
+        <span class="sh-list-meta">
+          <span>{{ stack.executor|capitalize }}</span>
+          {% if stack.schedule_cron %}<span aria-hidden="true">·</span><span class="sh-mono">{{ stack.schedule_cron }}</span>{% endif %}
+        </span>
       </span>
       {% if latest[stack.id] %}
-      {{ ui.status(latest[stack.id].state) }}
+      <span class="sh-list-trailing">
+        {{ ui.status(latest[stack.id].state) }}
+        <span><span class="sh-mono">{{ latest[stack.id].commit_sha[:12] }}</span> · {{ ui.timestamp(latest[stack.id].created_at) }}</span>
+      </span>
       {% else %}
-      <span class="text-xs text-zinc-400">No runs</span>
+      <span class="sh-list-trailing">No runs yet</span>
       {% endif %}
     </a>
   </li>
   {% else %}
-  <li class="px-4 py-6 text-sm text-zinc-500">No stacks yet.</li>
+  <li class="sh-empty">No stacks yet.</li>
   {% endfor %}
 </ul>
+</section>
 {% endblock %}

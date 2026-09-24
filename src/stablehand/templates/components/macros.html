@@ -2,47 +2,83 @@
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 {% endmacro %}
 
-{% macro status(state) %}
-<span class="inline-flex rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">{{ state_label(state) }}</span>
+{% macro page_header(title, subtitle='', breadcrumb='', breadcrumb_href='') %}
+<header class="sh-page-header">
+  <div class="sh-page-heading">
+    {% if breadcrumb %}
+    <p class="sh-breadcrumb">
+      {% if breadcrumb_href %}<a href="{{ breadcrumb_href }}">{{ breadcrumb }}</a>{% else %}{{ breadcrumb }}{% endif %}
+    </p>
+    {% endif %}
+    <h1 class="sh-page-title">{{ title }}</h1>
+    {% if subtitle %}<p class="sh-page-subtitle">{{ subtitle }}</p>{% endif %}
+  </div>
+  {% if caller is defined %}
+  <div class="sh-page-actions">{{ caller() }}</div>
+  {% endif %}
+</header>
 {% endmacro %}
 
-{% macro field(label, name, value='', type='text', hint='') %}
-<label class="block text-sm">
-  <span class="font-medium text-zinc-800">{{ label }}</span>
-  <input class="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm" type="{{ type }}" name="{{ name }}" value="{{ value }}">
-  {% if hint %}<span class="mt-1 block text-xs text-zinc-500">{{ hint }}</span>{% endif %}
+{% macro status(state) %}
+<span class="sh-badge sh-badge-{{ state_variant(state) }}{% if state in live_states %} sh-badge-live{% endif %}" data-state="{{ state }}">{{ state_label(state) }}</span>
+{% endmacro %}
+
+{% macro timestamp(value, prefix='') %}
+{% if value %}{% if prefix %}{{ prefix }} {% endif %}<time class="sh-time" datetime="{{ isoformat_utc(value) }}">{{ format_timestamp(value) }}</time>{% endif %}
+{% endmacro %}
+
+{% macro field(label, name, value='', type='text', hint='', required=false, autocomplete='') %}
+<label class="sh-field">
+  <span class="sh-label">{{ label }}</span>
+  <input class="sh-input" type="{{ type }}" name="{{ name }}" value="{{ value }}"{% if required %} required{% endif %}{% if autocomplete %} autocomplete="{{ autocomplete }}"{% endif %}>
+  {% if hint %}<span class="sh-field-hint">{{ hint }}</span>{% endif %}
+</label>
+{% endmacro %}
+
+{% macro select_field(label, name, hint='') %}
+<label class="sh-field">
+  <span class="sh-label">{{ label }}</span>
+  <select class="sh-select" name="{{ name }}">{{ caller() }}</select>
+  {% if hint %}<span class="sh-field-hint">{{ hint }}</span>{% endif %}
+</label>
+{% endmacro %}
+
+{% macro checkbox(label, name, checked=false, value='on') %}
+<label class="sh-check">
+  <input type="checkbox" name="{{ name }}" value="{{ value }}"{% if checked %} checked{% endif %}>
+  <span>{{ label }}</span>
 </label>
 {% endmacro %}
 
 {% macro host_tree(document, show_all=false) %}
 {% if not document or not document.hosts %}
-<p class="text-sm text-zinc-500">No host results yet.</p>
+<p class="sh-muted text-sm">No host results yet.</p>
 {% else %}
 {% set counts = document.counts %}
-<div class="flex items-baseline justify-between gap-4">
-  <p class="min-w-0 text-sm text-zinc-600">{{ counts.hosts }} hosts, {{ counts.change }} will change, {{ counts.unchanged }} in sync, {{ counts.unreachable }} unreachable, {{ counts.failed }} failed</p>
+<div class="sh-host-summary flex items-baseline justify-between gap-4">
+  <p class="sh-muted min-w-0 text-sm">{{ counts.hosts }} hosts, {{ counts.change }} will change, {{ counts.unchanged }} in sync, {{ counts.unreachable }} unreachable, {{ counts.failed }} failed</p>
   {% if caller is defined %}{{ caller() }}{% endif %}
 </div>
 <div class="mt-3 space-y-2">
   {% for host in document.hosts %}
     {% if show_all or host.status != 'unchanged' %}
-    <details class="rounded-md border border-zinc-200 bg-white" {% if host.status != 'unchanged' %}open{% endif %}>
-      <summary class="cursor-pointer px-4 py-3 font-mono text-sm">
+    <details class="sh-host" {% if host.status != 'unchanged' %}open{% endif %}>
+      <summary>
         {{ host.name }}
-        <span class="ml-2 text-zinc-500">{{ host.status }}</span>
+        <span class="sh-muted ml-2">{{ host.status }}</span>
       </summary>
-      <ul class="border-t border-zinc-100 px-4 py-2">
+      <ul class="sh-host-operations">
         {% for op in host.operations %}
           {% if show_all or op.will_change or op.result %}
           <li class="flex items-baseline justify-between gap-4 py-1 text-sm">
             <span>{{ op.name }}</span>
-            <span class="shrink-0 font-mono text-xs text-zinc-500">
+            <span class="sh-muted sh-mono shrink-0 text-xs">
               {% if op.result %}{{ op.result }}{% elif op.conditional %}conditional{% elif op.will_change %}will change{% else %}in sync{% endif %}
             </span>
           </li>
           {% endif %}
         {% else %}
-          <li class="py-1 text-sm text-zinc-500">No operations recorded for this host.</li>
+          <li class="sh-muted py-1 text-sm">No operations recorded for this host.</li>
         {% endfor %}
       </ul>
       {% for diff in host.diffs %}

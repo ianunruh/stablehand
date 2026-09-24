@@ -4,43 +4,93 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Stablehand{% endblock %}</title>
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("stablehand-theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      } catch (_) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js" defer></script>
 </head>
-<body class="min-h-screen bg-zinc-50 text-zinc-900 antialiased" {% if csrf_token %}hx-boost="true" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'{% endif %}>
-  <header class="border-b border-zinc-200 bg-white">
-    <div class="mx-auto flex max-w-5xl items-center justify-between gap-6 px-6 py-4">
-      <a class="text-sm font-semibold tracking-tight" href="/">Stablehand</a>
+<body class="min-h-screen antialiased" {% if csrf_token %}hx-boost="true" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'{% endif %}>
+  {% set path = request.url.path %}
+  {% import "components/macros.html" as ui %}
+  <header class="sh-app-header">
+    <div class="sh-app-header-inner">
+      <a class="sh-brand" href="/">
+        <span class="sh-brand-mark">SH</span>
+        <span>Stablehand</span>
+      </a>
       {% if user %}
-      <nav class="flex items-center gap-4 text-sm text-zinc-600">
-        <a href="/">Inbox</a>
-        <a href="/stacks">Stacks</a>
+      <nav class="sh-nav" aria-label="Primary navigation">
+        <a class="sh-nav-link" href="/" {% if path == '/' %}aria-current="page"{% endif %}>Inbox</a>
+        <a class="sh-nav-link" href="/stacks" {% if path.startswith('/stacks') or path.startswith('/runs') %}aria-current="page"{% endif %}>Stacks</a>
         {% if user.role == 'admin' %}
-        <a href="/settings/users">Users</a>
-        <a href="/settings/auth">OIDC</a>
-        <a href="/settings/integrations">Integrations</a>
+        <a class="sh-nav-link" href="/settings/users" {% if path.startswith('/settings/users') %}aria-current="page"{% endif %}>Users</a>
+        <a class="sh-nav-link" href="/settings/auth" {% if path.startswith('/settings/auth') %}aria-current="page"{% endif %}>OIDC</a>
+        <a class="sh-nav-link" href="/settings/integrations" {% if path.startswith('/settings/integrations') %}aria-current="page"{% endif %}>Integrations</a>
         {% endif %}
-        <span class="text-zinc-400">{{ user.email }}</span>
-        <form method="post" action="/logout">
-          {% import "components/macros.html" as ui %}
-          {{ ui.csrf() }}
-          <button class="text-zinc-600" type="submit">Sign out</button>
-        </form>
       </nav>
       {% endif %}
+      <div class="sh-header-tools">
+        {% if user %}<span class="sh-user" title="{{ user.email }}">{{ user.email }}</span>{% endif %}
+        <button class="sh-theme-toggle" type="button" data-theme-toggle title="Theme: system" aria-label="Change color theme">
+          <span aria-hidden="true" data-theme-icon>◐</span>
+        </button>
+        {% if user %}
+        <form method="post" action="/logout">
+          {{ ui.csrf() }}
+          <button class="sh-text-action" type="submit">Sign out</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
   </header>
-  <main class="mx-auto max-w-5xl px-6 py-8">
+  <main class="sh-main">
     {% if notice %}
-    <p class="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">{{ notice }}</p>
+    <p class="sh-alert sh-alert-success">{{ notice }}</p>
     {% endif %}
     {% if error %}
-    <p class="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-950">{{ error }}</p>
+    <p class="sh-alert sh-alert-danger">{{ error }}</p>
     {% endif %}
     {% block content %}{% endblock %}
   </main>
   <script>
     (function () {
+      var key = "stablehand-theme";
+      var root = document.documentElement;
+      var toggle = document.querySelector("[data-theme-toggle]");
+      var icon = document.querySelector("[data-theme-icon]");
+      function savedTheme() {
+        try { return localStorage.getItem(key) || "system"; } catch (_) { return "system"; }
+      }
+      function describeTheme(theme) {
+        var labels = { system: "Theme: system", light: "Theme: light", dark: "Theme: dark" };
+        var icons = { system: "◐", light: "☀", dark: "☾" };
+        if (toggle) toggle.title = labels[theme];
+        if (icon) icon.textContent = icons[theme];
+      }
+      function setTheme(theme) {
+        if (theme === "system") {
+          delete root.dataset.theme;
+          try { localStorage.removeItem(key); } catch (_) {}
+        } else {
+          root.dataset.theme = theme;
+          try { localStorage.setItem(key, theme); } catch (_) {}
+        }
+        describeTheme(theme);
+      }
+      if (toggle) {
+        describeTheme(savedTheme());
+        toggle.addEventListener("click", function () {
+          var current = savedTheme();
+          setTheme(current === "system" ? "light" : current === "light" ? "dark" : "system");
+        });
+      }
+
       var options = { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" };
       function formatTimes() {
         document.querySelectorAll("time[datetime]").forEach(function (node) {

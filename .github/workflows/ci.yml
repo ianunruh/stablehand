@@ -35,6 +35,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e ".[dev]"
+      - run: ./scripts/build-css.sh
       - run: ruff format --check .
       - run: ruff check .
       - run: pytest

@@ -22,8 +22,29 @@ STATE_LABELS = {
     RunState.rejected.value: "Rejected",
 }
 
+STATE_VARIANTS = {
+    RunState.check_queued.value: "info",
+    RunState.check_running.value: "info",
+    RunState.needs_approval.value: "warning",
+    RunState.unchanged.value: "success",
+    RunState.check_failed.value: "danger",
+    RunState.apply_queued.value: "info",
+    RunState.apply_running.value: "info",
+    RunState.succeeded.value: "success",
+    RunState.apply_failed.value: "danger",
+    RunState.rejected.value: "danger",
+}
+
+TRIGGER_LABELS = {
+    "manual": "Manual",
+    "ci": "CI",
+    "schedule": "Scheduled",
+}
+
 templates = Jinja2Templates(directory=str(get_settings().package_dir / "templates"))
 templates.env.globals["state_label"] = lambda state: STATE_LABELS.get(state, state)
+templates.env.globals["state_variant"] = lambda state: STATE_VARIANTS.get(state, "neutral")
+templates.env.globals["trigger_label"] = lambda trigger: TRIGGER_LABELS.get(trigger, trigger)
 templates.env.globals["counts_of"] = counts_of
 templates.env.globals["log_text"] = log_text
 templates.env.globals["timeline"] = timeline

@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Not found · Stablehand{% endblock %}
 {% block content %}
-<h1 class="text-xl font-semibold">Not found</h1>
+<div class="sh-error-page">
+  <p class="sh-breadcrumb">404</p>
+  <h1 class="sh-page-title">That page is not here.</h1>
+  <p class="sh-page-subtitle">The address may be stale, or the resource may have been removed.</p>
+  <a class="sh-btn sh-btn-secondary mt-6" href="/">Return to inbox</a>
+</div>
 {% endblock %}

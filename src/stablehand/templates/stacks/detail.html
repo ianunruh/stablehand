@@ -2,36 +2,48 @@
 {% import "components/macros.html" as ui %}
 {% block title %}{{ stack.name }} · Stablehand{% endblock %}
 {% block content %}
-<div class="flex items-start justify-between gap-4">
-  <div>
-    <h1 class="text-xl font-semibold">{{ stack.name }}</h1>
-    <p class="mt-1 font-mono text-xs text-zinc-500">{{ stack.executor }} · {{ stack.git_url or stack.local_path }}</p>
-    {% if stack.schedule_cron %}
-    <p class="mt-1 text-xs text-zinc-500">Schedule {{ stack.schedule_cron }}</p>
-    {% endif %}
-  </div>
-  <div class="flex gap-2">
+{% set stack_source = stack.git_url or stack.local_path %}
+{% set stack_subtitle = stack.executor|capitalize ~ ' executor · ' ~ stack_source %}
+{% call ui.page_header(stack.name, stack_subtitle, 'Stacks', '/stacks') %}
     {% if user.role == 'admin' %}
-    <a class="rounded-md border border-zinc-300 px-3 py-2 text-sm" href="/stacks/{{ stack.id }}/edit">Edit</a>
-    <a class="rounded-md border border-zinc-300 px-3 py-2 text-sm" href="/stacks/{{ stack.id }}/tokens">Tokens</a>
+    <a class="sh-btn sh-btn-secondary" href="/stacks/{{ stack.id }}/edit">Edit</a>
+    <a class="sh-btn sh-btn-secondary" href="/stacks/{{ stack.id }}/tokens">Tokens</a>
     {% endif %}
     <form method="post" action="/stacks/{{ stack.id }}/runs">
       {{ ui.csrf() }}
-      <button class="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white" type="submit">Start check</button>
+      <button class="sh-btn sh-btn-primary" type="submit">Start check</button>
     </form>
+{% endcall %}
+{% if stack.schedule_cron %}
+<p class="sh-meta"><span>Schedule</span><span class="sh-mono">{{ stack.schedule_cron }}</span>{% if stack.schedule_next_at %}<span aria-hidden="true">·</span>{{ ui.timestamp(stack.schedule_next_at, 'Next') }}{% endif %}</p>
+{% endif %}
+<section class="sh-section">
+  <div class="sh-section-header">
+    <h2 class="sh-section-title">Recent runs</h2>
+    <span class="sh-muted text-xs">Latest 30</span>
   </div>
-</div>
-<h2 class="mt-8 text-sm font-medium text-zinc-500">Recent runs</h2>
-<ul class="mt-2 divide-y divide-zinc-200 overflow-hidden rounded-md border border-zinc-200 bg-white">
+<ul class="sh-list">
   {% for run in runs %}
   <li>
-    <a class="flex items-center justify-between px-4 py-3 text-sm hover:bg-zinc-50" href="/runs/{{ run.id }}">
-      <span class="font-mono text-xs">{{ run.commit_sha }}</span>
-      <span>{{ ui.status(run.state) }}</span>
+    <a class="sh-list-row" href="/runs/{{ run.id }}">
+      <span class="sh-list-primary">
+        <span class="sh-list-title sh-mono">{{ run.commit_sha[:12] }}</span>
+        <span class="sh-list-meta">
+          <span>{{ trigger_label(run.trigger) }}{% if run.trigger_user %} by {{ run.trigger_user.email }}{% endif %}</span>
+          <span aria-hidden="true">·</span>
+          {{ ui.timestamp(run.created_at) }}
+        </span>
+      </span>
+      <span class="sh-list-trailing">
+        {% set counts = counts_of(run) %}
+        {{ ui.status(run.state) }}
+        <span>{{ counts.change }} change{% if counts.change != 1 %}s{% endif %}</span>
+      </span>
     </a>
   </li>
   {% else %}
-  <li class="px-4 py-6 text-sm text-zinc-500">No runs yet.</li>
+  <li class="sh-empty">No runs yet.</li>
   {% endfor %}
 </ul>
+</section>
 {% endblock %}

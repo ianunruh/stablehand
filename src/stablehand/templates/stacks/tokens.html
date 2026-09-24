@@ -2,40 +2,44 @@
 {% import "components/macros.html" as ui %}
 {% block title %}Tokens · {{ stack.name }}{% endblock %}
 {% block content %}
-<p class="text-sm text-zinc-500"><a href="/stacks/{{ stack.id }}">{{ stack.name }}</a></p>
-<h1 class="mt-1 text-xl font-semibold">CI tokens</h1>
-<p class="mt-2 text-sm text-zinc-600">A CI token can open a check and read its status. It cannot approve or read diffs.</p>
+{% call ui.page_header('CI tokens', 'Tokens can open checks and read status, but cannot approve or read diffs.', stack.name, '/stacks/' ~ stack.id) %}{% endcall %}
 {% if revealed %}
-<p class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 font-mono text-sm text-amber-950">{{ revealed }}</p>
+<p class="sh-alert sh-alert-warning sh-mono mt-6 break-all">{{ revealed }}</p>
 {% endif %}
-<form class="mt-6 flex flex-wrap items-end gap-3" method="post" action="/stacks/{{ stack.id }}/tokens">
+<form class="sh-form-card grid items-end gap-4 sm:grid-cols-[1fr_10rem_auto]" method="post" action="/stacks/{{ stack.id }}/tokens">
   {{ ui.csrf() }}
-  <label class="text-sm">
-    <span class="font-medium">Name</span>
-    <input class="mt-1 block rounded-md border border-zinc-300 px-3 py-2" name="name" required>
-  </label>
-  <label class="text-sm">
-    <span class="font-medium">Expires in days</span>
-    <input class="mt-1 block w-32 rounded-md border border-zinc-300 px-3 py-2" name="expires_days" inputmode="numeric">
-  </label>
-  <button class="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white" type="submit">Create token</button>
+  {{ ui.field('Name', 'name', required=true) }}
+  {{ ui.field('Expires in days', 'expires_days', '', 'text') }}
+  <button class="sh-btn sh-btn-primary" type="submit">Create token</button>
 </form>
-<ul class="mt-6 divide-y divide-zinc-200 overflow-hidden rounded-md border border-zinc-200 bg-white">
+<section class="sh-section">
+<div class="sh-section-header"><h2 class="sh-section-title">Issued tokens</h2></div>
+<ul class="sh-list">
   {% for token in tokens %}
-  <li class="flex items-center justify-between px-4 py-3 text-sm">
-    <span>
-      <span class="font-medium">{{ token.name }}</span>
-      <span class="mt-1 block font-mono text-xs text-zinc-500">{{ token.token_prefix }}… {% if token.revoked_at %}revoked{% elif token.expires_at %}expires {{ token.expires_at }}{% else %}no expiry{% endif %}</span>
+  <li class="sh-list-row">
+    <span class="sh-list-primary">
+      <span class="sh-list-title">{{ token.name }}</span>
+      <span class="sh-list-meta">
+        <span class="sh-mono">{{ token.token_prefix }}…</span>
+        <span aria-hidden="true">·</span>
+        {{ ui.timestamp(token.created_at, 'Created') }}
+        {% if token.revoked_at %}<span aria-hidden="true">·</span>{{ ui.timestamp(token.revoked_at, 'Revoked') }}
+        {% elif token.expires_at %}<span aria-hidden="true">·</span>{{ ui.timestamp(token.expires_at, 'Expires') }}
+        {% else %}<span aria-hidden="true">·</span><span>No expiry</span>{% endif %}
+      </span>
     </span>
     {% if not token.revoked_at %}
     <form method="post" action="/tokens/{{ token.id }}/revoke">
       {{ ui.csrf() }}
-      <button class="text-sm text-zinc-600" type="submit">Revoke</button>
+      <button class="sh-btn sh-btn-danger" type="submit">Revoke</button>
     </form>
+    {% else %}
+    <span class="sh-badge sh-badge-danger">Revoked</span>
     {% endif %}
   </li>
   {% else %}
-  <li class="px-4 py-6 text-sm text-zinc-500">No tokens yet.</li>
+  <li class="sh-empty">No tokens yet.</li>
   {% endfor %}
 </ul>
+</section>
 {% endblock %}

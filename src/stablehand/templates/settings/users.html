@@ -2,34 +2,30 @@
 {% import "components/macros.html" as ui %}
 {% block title %}Users · Stablehand{% endblock %}
 {% block content %}
-<h1 class="text-xl font-semibold">Users</h1>
-<ul class="mt-6 space-y-4">
+{% call ui.page_header('Users', 'Manage access, roles, and approval-group membership.') %}{% endcall %}
+<ul class="sh-list sh-section">
   {% for subject in users %}
-  <li class="rounded-md border border-zinc-200 bg-white p-4">
-    <form class="flex flex-wrap items-end gap-3" method="post" action="/settings/users/{{ subject.id }}">
+  <li class="p-4">
+    <form class="grid items-end gap-4 lg:grid-cols-[minmax(12rem,1.4fr)_8rem_minmax(12rem,1fr)_auto_auto]" method="post" action="/settings/users/{{ subject.id }}">
       {{ ui.csrf() }}
-      <div class="min-w-48 text-sm">
-        <p class="font-medium">{{ subject.email }}</p>
-        <p class="text-xs text-zinc-500">{{ subject.name }}</p>
+      <div class="min-w-0">
+        <p class="sh-list-title truncate">{{ subject.email }}</p>
+        <p class="sh-list-meta">
+          {% if subject.name %}<span>{{ subject.name }}</span><span aria-hidden="true">·</span>{% endif %}
+          {{ ui.timestamp(subject.created_at, 'Joined') }}
+        </p>
       </div>
-      <label class="text-sm">
-        <span class="font-medium">Role</span>
-        <select class="mt-1 block rounded-md border border-zinc-300 bg-white px-3 py-2" name="role">
+      {% call ui.select_field('Role', 'role') %}
           <option value="member" {% if subject.role == 'member' %}selected{% endif %}>Member</option>
           <option value="admin" {% if subject.role == 'admin' %}selected{% endif %}>Admin</option>
-        </select>
-      </label>
-      <label class="text-sm">
-        <span class="font-medium">Groups</span>
-        <input class="mt-1 block rounded-md border border-zinc-300 px-3 py-2" name="groups" value="{{ (subject.groups or [])|join(', ') }}">
-      </label>
-      <label class="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="enabled" {% if subject.enabled %}checked{% endif %}>
-        Enabled
-      </label>
-      <button class="rounded-md border border-zinc-300 px-3 py-2 text-sm" type="submit">Save</button>
+      {% endcall %}
+      {{ ui.field('Groups', 'groups', (subject.groups or [])|join(', ')) }}
+      {{ ui.checkbox('Enabled', 'enabled', subject.enabled) }}
+      <button class="sh-btn sh-btn-secondary" type="submit">Save</button>
     </form>
   </li>
+  {% else %}
+  <li class="sh-empty">No users yet.</li>
   {% endfor %}
 </ul>
 {% endblock %}

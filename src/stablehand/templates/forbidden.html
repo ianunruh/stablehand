@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Forbidden · Stablehand{% endblock %}
 {% block content %}
-<h1 class="text-xl font-semibold">You do not have access to that.</h1>
+<div class="sh-error-page">
+  <p class="sh-breadcrumb">403</p>
+  <h1 class="sh-page-title">You do not have access to that.</h1>
+  <p class="sh-page-subtitle">Your account is signed in, but it does not have permission to open this page.</p>
+  <a class="sh-btn sh-btn-secondary mt-6" href="/">Return to inbox</a>
+</div>
 {% endblock %}

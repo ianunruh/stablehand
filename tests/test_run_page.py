@@ -90,9 +90,11 @@ def test_run_page_keeps_timestamps_on_one_line(client, db):
     response = client.get(f"/runs/{run.id}")
     assert response.status_code == 200
     page = response.text
-    assert page.index("Check") < page.index("Opened")
-    assert "whitespace-nowrap" in page
-    assert "flex-nowrap" in page
+    assert page.index(">Check<") < page.index(">Opened<")
+    assert 'class="sh-time"' in page
+    assert "sh-timeline-head" in page
+    assert 'data-state="needs_approval"' in page
+    assert "sh-badge-warning" in page
     assert "Approve apply of abc123def456" in page
-    assert "manual by ada@example.com" not in page
+    assert "Manual by ada@example.com" in page
     assert "Install nginx" in page

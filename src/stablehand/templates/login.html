@@ -1,21 +1,18 @@
 {% extends "base.html" %}
+{% import "components/macros.html" as ui %}
 {% block title %}Sign in · Stablehand{% endblock %}
 {% block content %}
-<div class="mx-auto max-w-sm">
-  <h1 class="text-xl font-semibold">Sign in</h1>
-  <form class="mt-6 space-y-4" method="post" action="/login">
-    <label class="block text-sm">
-      <span class="font-medium">Email</span>
-      <input class="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2" type="email" name="email" required>
-    </label>
-    <label class="block text-sm">
-      <span class="font-medium">Password</span>
-      <input class="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2" type="password" name="password" required>
-    </label>
-    <button class="w-full rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white" type="submit">Sign in</button>
+<div class="mx-auto max-w-md pt-8">
+  {% call ui.page_header('Welcome back', 'Sign in to review and apply infrastructure changes.') %}{% endcall %}
+  <form class="sh-form-card max-w-none space-y-4" method="post" action="/login">
+    {{ ui.field('Email', 'email', '', 'email', required=true, autocomplete='email') }}
+    {{ ui.field('Password', 'password', '', 'password', required=true, autocomplete='current-password') }}
+    <button class="sh-btn sh-btn-primary w-full" type="submit">Sign in</button>
+    {% if oidc_enabled %}
+    <div class="border-t pt-4">
+      <a class="sh-btn sh-btn-secondary w-full" href="/login/oidc">Sign in with OIDC</a>
+    </div>
+    {% endif %}
   </form>
-  {% if oidc_enabled %}
-  <a class="mt-4 block text-center text-sm text-zinc-600" href="/login/oidc">Sign in with OIDC</a>
-  {% endif %}
 </div>
 {% endblock %}
