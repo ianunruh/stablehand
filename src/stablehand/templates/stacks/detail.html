@@ -4,17 +4,29 @@
 {% block content %}
 {% set stack_source = stack.git_url or stack.local_path %}
 {% set stack_subtitle = stack.executor|capitalize ~ ' executor · ' ~ stack_source %}
+{% set check_popover_id = 'start-check-' ~ stack.id %}
 {% call ui.page_header(stack.name, stack_subtitle, 'Stacks', '/stacks') %}
     {% if user.role == 'admin' %}
     <a class="sh-btn sh-btn-secondary" href="/stacks/{{ stack.id }}/edit">Edit</a>
     <a class="sh-btn sh-btn-secondary" href="/stacks/{{ stack.id }}/tokens">Tokens</a>
     {% endif %}
-    <form class="flex flex-wrap items-end gap-2" method="post" action="/stacks/{{ stack.id }}/runs">
-      {{ ui.csrf() }}
-      {{ ui.field('Limit', 'limit', stack.default_limit or '', 'text', 'Comma-separated patterns. Clear to target all hosts.') }}
-      <button class="sh-btn sh-btn-primary" type="submit">Start check</button>
-    </form>
+    <button class="sh-btn sh-btn-primary sh-check-trigger" type="button" popovertarget="{{ check_popover_id }}" aria-haspopup="dialog">Start check</button>
 {% endcall %}
+<div class="sh-check-popover" id="{{ check_popover_id }}" popover role="dialog" aria-labelledby="{{ check_popover_id }}-title">
+  <div class="sh-popover-header">
+    <div>
+      <p class="sh-section-title">New run</p>
+      <h2 class="sh-popover-title" id="{{ check_popover_id }}-title">Start a check</h2>
+    </div>
+    <button class="sh-text-action" type="button" popovertarget="{{ check_popover_id }}" popovertargetaction="hide">Close</button>
+  </div>
+  <p class="sh-muted text-sm">Run a dry check and review its changes before anything is applied.</p>
+  <form class="sh-popover-form" method="post" action="/stacks/{{ stack.id }}/runs">
+    {{ ui.csrf() }}
+    {{ ui.field('Limit', 'limit', stack.default_limit or '', 'text', 'Comma-separated patterns. Clear to target all hosts.') }}
+    <button class="sh-btn sh-btn-primary w-full" type="submit">Start check</button>
+  </form>
+</div>
 {% if stack.schedule_cron %}
 <p class="sh-meta"><span>Schedule</span><span class="sh-mono">{{ stack.schedule_cron }}</span>{% if stack.schedule_next_at %}<span aria-hidden="true">·</span>{{ ui.timestamp(stack.schedule_next_at, 'Next') }}{% endif %}</p>
 {% endif %}

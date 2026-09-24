@@ -54,6 +54,12 @@ def test_operational_pages_render_shared_components_and_metadata(client, db):
     assert "1 change" in detail.text
     assert "Manual by admin@example.com" in detail.text
     assert 'name="limit" value="web-*, canary"' in detail.text
+    assert 'class="sh-check-popover"' in detail.text
+    assert 'popover role="dialog"' in detail.text
+    page_header = detail.text.split('<header class="sh-page-header">', 1)[1].split("</header>", 1)[
+        0
+    ]
+    assert 'name="limit"' not in page_header
 
     run_page = client.get(f"/runs/{run.id}")
     assert run_page.status_code == 200
