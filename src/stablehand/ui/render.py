@@ -41,12 +41,20 @@ TRIGGER_LABELS = {
     "schedule": "Scheduled",
 }
 
+
+def log_contains_error(error: str | None, output: str) -> bool:
+    if not error or not output:
+        return False
+    return " ".join(error.split()) in " ".join(output.split())
+
+
 templates = Jinja2Templates(directory=str(get_settings().package_dir / "templates"))
 templates.env.globals["state_label"] = lambda state: STATE_LABELS.get(state, state)
 templates.env.globals["state_variant"] = lambda state: STATE_VARIANTS.get(state, "neutral")
 templates.env.globals["trigger_label"] = lambda trigger: TRIGGER_LABELS.get(trigger, trigger)
 templates.env.globals["counts_of"] = counts_of
 templates.env.globals["log_text"] = log_text
+templates.env.globals["log_contains_error"] = log_contains_error
 templates.env.globals["timeline"] = timeline
 templates.env.globals["format_timestamp"] = format_timestamp
 templates.env.globals["isoformat_utc"] = isoformat_utc

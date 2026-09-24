@@ -654,6 +654,51 @@
     padding: 0.45rem 1rem;
   }
 
+  .sh-failure {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    border: 1px solid var(--danger-border);
+    border-radius: 0.55rem;
+    background: var(--danger-bg);
+    padding: 0.85rem;
+    color: var(--danger-ink);
+  }
+
+  .sh-failure-body {
+    min-width: 0;
+  }
+
+  .sh-failure-title {
+    font-size: 0.8rem;
+    font-weight: 750;
+  }
+
+  .sh-failure-description {
+    margin-top: 0.2rem;
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+
+  .sh-failure-detail {
+    max-height: 10rem;
+    margin-top: 0.45rem;
+    overflow: auto;
+    color: var(--danger-ink);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    line-height: 1.25rem;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .sh-failure-action {
+    align-self: center;
+  }
+
   .diff {
     overflow-x: auto;
     border: 1px solid var(--code-border);
@@ -975,6 +1020,15 @@
     .sh-list-trailing {
       align-items: flex-start;
       text-align: left;
+    }
+
+    .sh-failure {
+      grid-template-columns: 1fr;
+    }
+
+    .sh-failure-action {
+      grid-column: 1 / -1;
+      width: 100%;
     }
 
     .sh-host-summary {

@@ -108,3 +108,49 @@ def test_run_page_keeps_timestamps_on_one_line(client, db):
     assert 'class="sh-log-dialog"' in page
     assert "sh-log-fullscreen" in page
     assert page.count("line one\nline two") == 2
+
+
+def test_run_page_deduplicates_error_that_is_already_in_log(client, db):
+    user = add_user(db, "ada@example.com")
+    stack = _stack(db)
+    login(client, user.email)
+    run = create_run(db, stack, commit_sha="abc123def456", trigger="manual", user=user)
+    failure = "Could not connect to any hosts.\npyinfra error: No hosts remaining!"
+    run.state = RunState.check_failed.value
+    run.error = failure
+    db.add(
+        RunLog(
+            run_id=run.id,
+            phase="check",
+            body=f"--> Connecting to hosts...\n{failure}\n",
+        )
+    )
+    db.commit()
+
+    response = client.get(f"/runs/{run.id}")
+
+    assert response.status_code == 200
+    page = response.text
+    assert "Runner reported a failure" in page
+    assert "sh-failure-mark" not in page
+    assert "The complete error output is recorded in the check log." in page
+    assert "Open check log" in page
+    assert page.count(failure) == 2
+
+
+def test_run_page_shows_standalone_error_without_log(client, db):
+    user = add_user(db, "ada@example.com")
+    stack = _stack(db)
+    login(client, user.email)
+    run = create_run(db, stack, commit_sha="abc123def456", trigger="manual", user=user)
+    run.state = RunState.check_failed.value
+    run.error = "Worker stopped before the runner started."
+    db.commit()
+
+    response = client.get(f"/runs/{run.id}")
+
+    assert response.status_code == 200
+    page = response.text
+    assert "Runner reported a failure" in page
+    assert "Worker stopped before the runner started." in page
+    assert "Open check log" not in page
