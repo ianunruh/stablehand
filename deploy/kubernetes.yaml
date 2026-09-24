@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stablehand
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stablehand-runners
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stablehand-worker
+  namespace: stablehand
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stablehand-runner
+  namespace: stablehand-runners
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stablehand-worker
+  namespace: stablehand-runners
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stablehand-runner
+subjects:
+  - kind: ServiceAccount
+    name: stablehand-worker
+    namespace: stablehand
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stablehand
+  namespace: stablehand
+spec:
+  selector:
+    app: stablehand-web
+  ports:
+    - port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stablehand-web
+  namespace: stablehand
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stablehand-web
+  template:
+    metadata:
+      labels:
+        app: stablehand-web
+    spec:
+      containers:
+        - name: web
+          image: stablehand:latest
+          args: ["sh", "-c", "alembic upgrade head && stablehand-web"]
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: stablehand
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stablehand-worker
+  namespace: stablehand
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stablehand-worker
+  template:
+    metadata:
+      labels:
+        app: stablehand-worker
+    spec:
+      serviceAccountName: stablehand-worker
+      containers:
+        - name: worker
+          image: stablehand:latest
+          args: ["stablehand-worker"]
+          envFrom:
+            - secretRef:
+                name: stablehand

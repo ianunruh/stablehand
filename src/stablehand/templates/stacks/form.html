@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "components/macros.html" as ui %}
+{% block title %}{{ stack.name if stack else 'New stack' }} · Stablehand{% endblock %}
+{% block content %}
+<h1 class="text-xl font-semibold">{{ stack.name if stack else 'New stack' }}</h1>
+<form class="mt-6 space-y-4" method="post" action="{{ '/stacks/' ~ stack.id if stack else '/stacks' }}">
+  {{ ui.csrf() }}
+  {% set f = form if form is defined and form else none %}
+  {{ ui.field('Name', 'name', f.name if f else (stack.name if stack else '')) }}
+  {{ ui.field('Deploy file', 'deploy_file', f.deploy_file if f else (stack.deploy_file if stack else 'deploy.py')) }}
+  {{ ui.field('Inventory', 'inventory', f.inventory if f else (stack.inventory if stack else 'inventory.py')) }}
+  <label class="block text-sm">
+    <span class="font-medium text-zinc-800">Executor</span>
+    {% set executor_value = f.executor if f else (stack.executor if stack else 'local') %}
+    <select class="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm" name="executor">
+      <option value="local" {% if executor_value == 'local' %}selected{% endif %}>Local subprocess</option>
+      <option value="kubernetes" {% if executor_value == 'kubernetes' %}selected{% endif %}>Kubernetes Job</option>
+    </select>
+  </label>
+  {{ ui.field('Git URL', 'git_url', f.git_url if f else (stack.git_url if stack and stack.git_url else ''), 'text', 'Required for Kubernetes. Leave empty to use a local path.') }}
+  {{ ui.field('Git ref', 'git_ref', f.git_ref if f else (stack.git_ref if stack and stack.git_ref else 'main')) }}
+  {{ ui.field('Local path', 'local_path', f.local_path if f else (stack.local_path if stack and stack.local_path else ''), 'text', 'Used when there is no git URL. The worker must be able to read it.') }}
+  {{ ui.field('Secret ref', 'secret_ref', f.secret_ref if f else (stack.secret_ref if stack and stack.secret_ref else ''), 'text', 'Local directory or Kubernetes secret name with an SSH key.') }}
+  {{ ui.field('Schedule', 'schedule_cron', f.schedule_cron if f else (stack.schedule_cron if stack and stack.schedule_cron else ''), 'text', 'Cron expression. Schedules open a check and wait for approval.') }}
+  <fieldset class="text-sm">
+    <legend class="font-medium text-zinc-800">Approvers</legend>
+    <p class="mt-1 text-xs text-zinc-500">Leave everyone unchecked and groups empty so any member can approve.</p>
+    <div class="mt-2 space-y-1">
+      {% for candidate in users %}
+      <label class="flex items-center gap-2">
+        <input type="checkbox" name="approver_user_id" value="{{ candidate.id }}" {% if candidate.id|string in selected_users %}checked{% endif %}>
+        <span>{{ candidate.email }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </fieldset>
+  {{ ui.field('Approver groups', 'approver_groups', group_text, 'text', 'Comma-separated group labels.') }}
+  <button class="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white" type="submit">Save stack</button>
+</form>
+{% endblock %}

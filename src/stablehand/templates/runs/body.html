@@ -1,0 +1,76 @@
+{% import "components/macros.html" as ui %}
+<div id="run-body" class="space-y-6" {% if run.state in live_states %}hx-get="/runs/{{ run.id }}/body{% if show_all %}?all=1{% endif %}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <div>
+    <p class="text-sm text-zinc-500"><a href="/stacks/{{ stack.id }}">{{ stack.name }}</a></p>
+    <div class="mt-1 flex flex-wrap items-center gap-3">
+      <h1 class="font-mono text-lg">{{ run.commit_sha }}</h1>
+      {{ ui.status(run.state) }}
+    </div>
+    <p class="mt-2 text-sm text-zinc-600">
+      {{ run.trigger }}
+      {% if run.trigger_user %} by {{ run.trigger_user.email }}{% endif %}
+      {% if run.approved_by %} · approved by {{ run.approved_by.email }}{% endif %}
+    </p>
+    {% if run.error %}
+    <p class="mt-3 text-sm text-red-800">{{ run.error }}</p>
+    {% endif %}
+    {% if run.reject_reason %}
+    <p class="mt-3 text-sm text-zinc-600">Rejected: {{ run.reject_reason }}</p>
+    {% endif %}
+  </div>
+
+  <div class="flex items-center justify-between">
+    <h2 class="text-sm font-medium text-zinc-500">{% if run.apply_document %}Apply result{% else %}Check{% endif %}</h2>
+    {% if show_all %}
+    <a class="text-sm text-zinc-600" href="/runs/{{ run.id }}">Changes only</a>
+    {% else %}
+    <a class="text-sm text-zinc-600" href="/runs/{{ run.id }}?all=1">Show unchanged hosts</a>
+    {% endif %}
+  </div>
+  {{ ui.host_tree(run.apply_document or run.check_document, show_all) }}
+
+  {% if run.previous_check_document %}
+  <details class="rounded-md border border-zinc-200 bg-white px-4 py-3">
+    <summary class="cursor-pointer text-sm text-zinc-600">Previously approved check</summary>
+    <div class="mt-3">{{ ui.host_tree(run.previous_check_document, true) }}</div>
+  </details>
+  {% endif %}
+
+  <section>
+    <h2 class="text-sm font-medium text-zinc-500">Log</h2>
+    {% set output = log_text(run) %}
+    {% if output %}
+    <pre class="mt-2 max-h-80 overflow-auto rounded-md bg-zinc-950 p-3 font-mono text-xs leading-5 text-zinc-100">{{ output }}</pre>
+    {% else %}
+    <p class="mt-2 text-sm text-zinc-500">No log output yet.</p>
+    {% endif %}
+  </section>
+
+  {% if run.state == 'needs_approval' %}
+  <div class="approve-bar -mx-6 px-6">
+    {% set counts = counts_of(run) %}
+    <p class="text-sm text-zinc-700">{{ counts.hosts }} hosts, {{ counts.change }} will change.</p>
+    {% if approve_block and not can_approve %}
+    <p class="mt-2 text-sm text-zinc-600">{{ approve_block }}</p>
+    {% endif %}
+    <div class="mt-3 flex flex-wrap items-end gap-3">
+      {% if can_approve %}
+      <form method="post" action="/runs/{{ run.id }}/approve">
+        {{ ui.csrf() }}
+        <button class="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white" type="submit">
+          Approve apply of {{ run.commit_sha[:12] }}
+        </button>
+      </form>
+      {% endif %}
+      <form class="flex items-end gap-2" method="post" action="/runs/{{ run.id }}/reject">
+        {{ ui.csrf() }}
+        <label class="text-sm">
+          <span class="font-medium">Reject reason</span>
+          <input class="mt-1 block rounded-md border border-zinc-300 px-3 py-2" name="reason">
+        </label>
+        <button class="rounded-md border border-zinc-300 px-3 py-2 text-sm" type="submit">Reject</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+</div>

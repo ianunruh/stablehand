@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Stablehand{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body class="min-h-screen bg-zinc-50 text-zinc-900 antialiased" {% if csrf_token %}hx-boost="true" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'{% endif %}>
+  <header class="border-b border-zinc-200 bg-white">
+    <div class="mx-auto flex max-w-5xl items-center justify-between gap-6 px-6 py-4">
+      <a class="text-sm font-semibold tracking-tight" href="/">Stablehand</a>
+      {% if user %}
+      <nav class="flex items-center gap-4 text-sm text-zinc-600">
+        <a href="/">Inbox</a>
+        <a href="/stacks">Stacks</a>
+        {% if user.role == 'admin' %}
+        <a href="/settings/users">Users</a>
+        <a href="/settings/auth">OIDC</a>
+        <a href="/settings/integrations">Integrations</a>
+        {% endif %}
+        <span class="text-zinc-400">{{ user.email }}</span>
+        <form method="post" action="/logout">
+          {% import "components/macros.html" as ui %}
+          {{ ui.csrf() }}
+          <button class="text-zinc-600" type="submit">Sign out</button>
+        </form>
+      </nav>
+      {% endif %}
+    </div>
+  </header>
+  <main class="mx-auto max-w-5xl px-6 py-8">
+    {% if notice %}
+    <p class="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">{{ notice }}</p>
+    {% endif %}
+    {% if error %}
+    <p class="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-950">{{ error }}</p>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% import "components/macros.html" as ui %}
+{% block title %}Inbox · Stablehand{% endblock %}
+{% block content %}
+<div class="flex items-baseline justify-between">
+  <h1 class="text-xl font-semibold">Waiting for approval</h1>
+</div>
+{% if not runs %}
+<p class="mt-6 text-sm text-zinc-500">Nothing is waiting on you.</p>
+{% else %}
+<ul class="mt-6 divide-y divide-zinc-200 overflow-hidden rounded-md border border-zinc-200 bg-white">
+  {% for run in runs %}
+  <li>
+    <a class="flex items-center justify-between gap-4 px-4 py-3 hover:bg-zinc-50" href="/runs/{{ run.id }}">
+      <span>
+        <span class="font-medium">{{ run.stack.name }}</span>
+        <span class="mt-1 block font-mono text-xs text-zinc-500">{{ run.commit_sha }} · {{ run.trigger }}</span>
+      </span>
+      <span class="text-right text-sm text-zinc-600">
+        {% set counts = counts_of(run) %}
+        {{ counts.change }} changes
+        <span class="mt-1 block">{{ ui.status(run.state) }}</span>
+      </span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

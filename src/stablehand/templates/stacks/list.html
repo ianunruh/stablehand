@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% import "components/macros.html" as ui %}
+{% block title %}Stacks · Stablehand{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between">
+  <h1 class="text-xl font-semibold">Stacks</h1>
+  {% if user.role == 'admin' %}
+  <a class="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white" href="/stacks/new">New stack</a>
+  {% endif %}
+</div>
+<ul class="mt-6 divide-y divide-zinc-200 overflow-hidden rounded-md border border-zinc-200 bg-white">
+  {% for stack in stacks %}
+  <li>
+    <a class="flex items-center justify-between px-4 py-3 hover:bg-zinc-50" href="/stacks/{{ stack.id }}">
+      <span>
+        <span class="font-medium">{{ stack.name }}</span>
+        <span class="mt-1 block text-xs text-zinc-500">{{ stack.executor }}</span>
+      </span>
+      {% if latest[stack.id] %}
+      {{ ui.status(latest[stack.id].state) }}
+      {% else %}
+      <span class="text-xs text-zinc-400">No runs</span>
+      {% endif %}
+    </a>
+  </li>
+  {% else %}
+  <li class="px-4 py-6 text-sm text-zinc-500">No stacks yet.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

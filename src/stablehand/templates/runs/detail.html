@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Run {{ run.commit_sha[:12] }} · Stablehand{% endblock %}
+{% block content %}
+{% include "runs/body.html" %}
+{% endblock %}

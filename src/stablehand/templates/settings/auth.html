@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% import "components/macros.html" as ui %}
+{% block title %}OIDC · Stablehand{% endblock %}
+{% block content %}
+<h1 class="text-xl font-semibold">OIDC</h1>
+<p class="mt-2 max-w-xl text-sm text-zinc-600">New identities from this provider are created disabled until an admin enables them. Redirect URI: {{ public_url() }}/login/oidc/callback.</p>
+<form class="mt-6 max-w-xl space-y-4" method="post" action="/settings/auth">
+  {{ ui.csrf() }}
+  <label class="flex items-center gap-2 text-sm">
+    <input type="checkbox" name="enabled" {% if oidc.enabled %}checked{% endif %}>
+    Enabled
+  </label>
+  {{ ui.field('Issuer', 'issuer', oidc.issuer) }}
+  {{ ui.field('Client ID', 'client_id', oidc.client_id) }}
+  {{ ui.field('Client secret', 'client_secret', '', 'password', 'Leave blank to keep the stored secret.') }}
+  {{ ui.field('Scopes', 'scopes', oidc.scopes) }}
+  <button class="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white" type="submit">Save</button>
+</form>
+{% endblock %}

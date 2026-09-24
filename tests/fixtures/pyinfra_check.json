@@ -1,0 +1,13 @@
+{
+  "plan": [
+    {
+      "op_hash": "abc123",
+      "name": "Echo stablehand demo",
+      "names": ["Echo stablehand demo"],
+      "args": [],
+      "hosts_with_change": ["web-1"],
+      "hosts_with_conditional_change": ["web-2"]
+    }
+  ],
+  "results": null
+}

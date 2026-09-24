@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% import "components/macros.html" as ui %}
+{% block title %}Integrations · Stablehand{% endblock %}
+{% block content %}
+<h1 class="text-xl font-semibold">Integrations</h1>
+<p class="mt-2 max-w-xl text-sm text-zinc-600">Webhooks fire when a check needs approval. The payload includes the run URL and change counts, not the diff.</p>
+<form class="mt-6 space-y-4 rounded-md border border-zinc-200 bg-white p-4" method="post" action="/settings/integrations">
+  {{ ui.csrf() }}
+  <h2 class="text-sm font-medium">Add webhook</h2>
+  {{ ui.field('Name', 'name', '') }}
+  {{ ui.field('URL', 'url', '', 'url') }}
+  {{ ui.field('Signing secret', 'secret', '', 'password', 'Optional. Sent as X-Stablehand-Signature.') }}
+  <label class="flex items-center gap-2 text-sm">
+    <input type="checkbox" name="enabled" checked>
+    Enabled
+  </label>
+  <button class="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white" type="submit">Save webhook</button>
+</form>
+<ul class="mt-6 divide-y divide-zinc-200 overflow-hidden rounded-md border border-zinc-200 bg-white">
+  {% for item in integrations %}
+  <li class="flex items-center justify-between px-4 py-3 text-sm">
+    <span>
+      <span class="font-medium">{{ item.name }}</span>
+      <span class="mt-1 block text-xs text-zinc-500">{{ item.config.url }} {% if not item.enabled %}· disabled{% endif %}</span>
+    </span>
+    <form method="post" action="/settings/integrations/{{ item.id }}/delete">
+      {{ ui.csrf() }}
+      <button class="text-zinc-600" type="submit">Remove</button>
+    </form>
+  </li>
+  {% else %}
+  <li class="px-4 py-6 text-sm text-zinc-500">No webhooks yet.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
