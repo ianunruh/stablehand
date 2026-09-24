@@ -15,7 +15,9 @@ from stablehand.config import get_settings
 from stablehand.db import session_scope
 from stablehand.models import Role, Stack, User
 from stablehand.runs.machine import router as machine_router
+from stablehand.runtimes.service import save_runtime
 from stablehand.security import csrf_matches, hash_password
+from stablehand.sources.service import save_source
 from stablehand.stacks.service import save_stack
 from stablehand.ui.render import render
 from stablehand.ui.routes import Forbidden, LoginRequired
@@ -99,6 +101,21 @@ def bootstrap() -> None:
             demo = settings.demo_path or str(
                 Path(__file__).resolve().parents[2] / "examples" / "demo"
             )
+            source = save_source(
+                db,
+                source=None,
+                name="Demo",
+                git_url="",
+                git_ref="",
+                local_path=demo,
+            )
+            runtime = save_runtime(
+                db,
+                runtime=None,
+                name="Local",
+                executor="local",
+                secret_ref="",
+            )
             save_stack(
                 db,
                 stack=None,
@@ -106,11 +123,9 @@ def bootstrap() -> None:
                 deploy_file="deploy.py",
                 inventory="inventory.py",
                 default_limit="",
-                executor="local",
-                git_url="",
+                source_id=str(source.id),
+                runtime_id=str(runtime.id),
                 git_ref="",
-                local_path=demo,
-                secret_ref="",
                 schedule_cron="",
                 approver_user_ids=[],
                 approver_groups="",

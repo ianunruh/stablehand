@@ -8,22 +8,16 @@ from stablehand.models import (
     DeliveryStatus,
     IntegrationDelivery,
     RunState,
-    Stack,
 )
 from stablehand.runs.service import claim, create_run, ingest_check_result
 from stablehand.security import aware, utcnow
 from stablehand.worker import _deliver_webhooks
+from tests.conftest import make_stack
 from tests.test_normalize import FIXTURE, STDERR
 
 
 def _delivery(db) -> IntegrationDelivery:
-    stack = Stack(
-        name="demo",
-        deploy_file="deploy.py",
-        inventory="inventory.py",
-        executor="local",
-        local_path="/tmp/demo",
-    )
+    stack = make_stack()
     db.add(stack)
     db.flush()
     run = create_run(db, stack, commit_sha="abc", trigger="ci", user=None)

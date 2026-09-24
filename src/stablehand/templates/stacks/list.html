@@ -15,7 +15,9 @@
       <span class="sh-list-primary">
         <span class="sh-list-title">{{ stack.name }}</span>
         <span class="sh-list-meta">
-          <span>{{ stack.executor|capitalize }}</span>
+          <span>{{ stack.source.name }}</span>
+          <span aria-hidden="true">·</span>
+          <span>{{ stack.runtime.name }}</span>
           {% if stack.schedule_cron %}<span aria-hidden="true">·</span><span class="sh-mono">{{ stack.schedule_cron }}</span>{% endif %}
         </span>
       </span>

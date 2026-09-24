@@ -5,12 +5,20 @@ from datetime import datetime
 
 from croniter import croniter
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from stablehand.gitssh import is_ssh_git_url
 from stablehand.limits import normalize_limit
-from stablehand.models import ApiToken, ExecutorKind, Stack, StackApprover, User
-from stablehand.security import after, encrypt_secret, hash_token, new_token, token_prefix, utcnow
+from stablehand.models import (
+    ApiToken,
+    ExecutorKind,
+    Run,
+    Runtime,
+    Source,
+    Stack,
+    StackApprover,
+    User,
+)
+from stablehand.security import after, hash_token, new_token, token_prefix, utcnow
 
 
 class StackError(Exception):
@@ -19,16 +27,24 @@ class StackError(Exception):
         super().__init__(message)
 
 
+def load_stack(*extra):
+    return selectinload(Stack.source), selectinload(Stack.runtime), *extra
+
+
+def load_run_stack(*extra):
+    return selectinload(Run.stack).options(
+        selectinload(Stack.source),
+        selectinload(Stack.runtime),
+        *extra,
+    )
+
+
 def validate_stack(
     *,
     name: str,
     deploy_file: str,
     inventory: str,
     default_limit: str,
-    executor: str,
-    git_url: str,
-    git_ref: str,
-    local_path: str,
     schedule_cron: str,
 ) -> None:
     if not name.strip():
@@ -37,12 +53,6 @@ def validate_stack(
         raise StackError("Deploy file and inventory are required.")
     if len(normalize_limit(default_limit) or "") > 1000:
         raise StackError("Default limit must be 1000 characters or fewer.")
-    if executor not in {ExecutorKind.local.value, ExecutorKind.kubernetes.value}:
-        raise StackError("Choose a local or Kubernetes executor.")
-    if executor == ExecutorKind.kubernetes.value and not git_url.strip():
-        raise StackError("Kubernetes stacks require a git URL.")
-    if not git_url.strip() and not local_path.strip():
-        raise StackError("Provide a git URL or a local path.")
     if schedule_cron.strip():
         try:
             croniter(schedule_cron.strip(), utcnow())
@@ -58,31 +68,25 @@ def save_stack(
     deploy_file: str,
     inventory: str,
     default_limit: str,
-    executor: str,
-    git_url: str,
+    source_id: str,
+    runtime_id: str,
     git_ref: str,
-    local_path: str,
-    secret_ref: str,
     schedule_cron: str,
     approver_user_ids: list[str],
     approver_groups: str,
-    git_ssh_key: str = "",
-    clear_git_ssh_key: bool = False,
 ) -> Stack:
-    encrypted_key = _git_ssh_key(stack, git_ssh_key, clear_git_ssh_key)
-    if encrypted_key and not is_ssh_git_url(git_url):
-        raise StackError(
-            "A deploy key requires an SSH git URL, such as git@github.com:org/repo.git."
-        )
+    source = _linked(session, Source, source_id, "Choose a source.")
+    runtime = _linked(session, Runtime, runtime_id, "Choose a runtime.")
+    override = git_ref.strip()
+    if runtime.executor == ExecutorKind.kubernetes.value and not source.git_url:
+        raise StackError("Kubernetes stacks require a git URL.")
+    if override and not source.git_url:
+        raise StackError("A git ref applies to a git source.")
     validate_stack(
         name=name,
         deploy_file=deploy_file,
         inventory=inventory,
         default_limit=default_limit,
-        executor=executor,
-        git_url=git_url,
-        git_ref=git_ref,
-        local_path=local_path,
         schedule_cron=schedule_cron,
     )
     if stack is None:
@@ -92,12 +96,9 @@ def save_stack(
     stack.deploy_file = deploy_file.strip()
     stack.inventory = inventory.strip()
     stack.default_limit = normalize_limit(default_limit)
-    stack.executor = executor
-    stack.git_url = git_url.strip() or None
-    stack.git_ref = (git_ref.strip() or "main") if stack.git_url else None
-    stack.local_path = local_path.strip() or None
-    stack.secret_ref = secret_ref.strip() or None
-    stack.git_ssh_key_encrypted = encrypted_key
+    stack.source = source
+    stack.runtime = runtime
+    stack.git_ref = override or None
     stack.schedule_cron = schedule_cron.strip() or None
     if stack.schedule_cron and stack.schedule_next_at is None:
         stack.schedule_next_at = next_schedule(stack.schedule_cron, utcnow())
@@ -157,18 +158,15 @@ def _groups(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
-def _git_ssh_key(stack: Stack | None, pasted: str, clear: bool) -> str:
-    text = pasted.strip()
-    if text:
-        return encrypt_secret(_normalize_deploy_key(text))
-    if clear or stack is None:
-        return ""
-    return stack.git_ssh_key_encrypted or ""
-
-
-def _normalize_deploy_key(value: str) -> str:
-    if "-----BEGIN " not in value or "PRIVATE KEY" not in value:
-        raise StackError("Deploy key must be a PEM SSH private key.")
-    if len(value) > 100_000:
-        raise StackError("Deploy key is too large.")
-    return value + "\n"
+def _linked(session: Session, model: type[Source] | type[Runtime], value: str, message: str):
+    text = value.strip()
+    if not text:
+        raise StackError(message)
+    try:
+        record_id = uuid.UUID(text)
+    except ValueError as exc:
+        raise StackError(message) from exc
+    record = session.get(model, record_id)
+    if record is None:
+        raise StackError(message)
+    return record

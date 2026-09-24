@@ -66,11 +66,12 @@ class KubernetesExecutor(Executor):
                     name="git-ssh", mount_path=str(MOUNTED_KEY.parent), read_only=True
                 )
             )
-        if stack.secret_ref:
+        secret_ref = stack.runtime.secret_ref if stack.runtime is not None else None
+        if secret_ref:
             volumes.append(
                 client.V1Volume(
                     name="secrets",
-                    secret=client.V1SecretVolumeSource(secret_name=stack.secret_ref),
+                    secret=client.V1SecretVolumeSource(secret_name=secret_ref),
                 )
             )
             mounts.append(

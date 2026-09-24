@@ -9,18 +9,12 @@ from stablehand.runs.service import (
     issue_run_token,
     lookup_run_token,
 )
-from tests.conftest import add_user
+from tests.conftest import add_user, make_stack
 from tests.test_normalize import FIXTURE
 
 
 def _stack(db) -> Stack:
-    stack = Stack(
-        name="demo",
-        deploy_file="deploy.py",
-        inventory="inventory.py",
-        executor="local",
-        local_path="/tmp/demo",
-    )
+    stack = make_stack()
     db.add(stack)
     db.commit()
     db.refresh(stack)

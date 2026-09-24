@@ -13,11 +13,23 @@ class SourceError(Exception):
         super().__init__(message)
 
 
+def effective_git_ref(stack: Stack) -> str | None:
+    if stack.git_ref:
+        return stack.git_ref
+    source = stack.source
+    if source is None:
+        return None
+    return source.git_ref
+
+
 def resolve_commit(stack: Stack) -> str:
-    if stack.local_path and not stack.git_url:
-        path = Path(stack.local_path)
+    source = stack.source
+    if source is None:
+        raise SourceError("Stack has no source.")
+    if source.local_path and not source.git_url:
+        path = Path(source.local_path)
         if not path.exists():
-            raise SourceError(f"Local path does not exist: {stack.local_path}")
+            raise SourceError(f"Local path does not exist: {source.local_path}")
         if (path / ".git").exists():
             try:
                 return subprocess.check_output(
@@ -30,14 +42,14 @@ def resolve_commit(stack: Stack) -> str:
                     exc.stderr.strip() or "Could not read the local git revision."
                 ) from exc
         return "local"
-    if not stack.git_url:
+    if not source.git_url:
         raise SourceError("Stack has no git URL or local path.")
-    ref = stack.git_ref or "HEAD"
+    ref = effective_git_ref(stack) or "HEAD"
     try:
         key = private_key(stack)
         with ssh_environment(key) as env:
             output = subprocess.check_output(
-                ["git", "ls-remote", stack.git_url, ref],
+                ["git", "ls-remote", source.git_url, ref],
                 text=True,
                 stderr=subprocess.PIPE,
                 env=env,

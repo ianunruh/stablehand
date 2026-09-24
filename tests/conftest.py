@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from stablehand.config import get_settings
 from stablehand.db import get_engine, get_sessionmaker, reset_engine
-from stablehand.models import Base, Role, User
+from stablehand.models import Base, Role, Runtime, Source, Stack, User
 from stablehand.security import csrf_token, hash_password
 from stablehand.web import create_app
 
@@ -48,6 +48,54 @@ def client(database) -> TestClient:
     application = create_app()
     with TestClient(application) as test_client:
         yield test_client
+
+
+def make_stack(
+    *,
+    name: str = "demo",
+    deploy_file: str = "deploy.py",
+    inventory: str = "inventory.py",
+    local_path: str | None = "/tmp/demo",
+    git_url: str | None = None,
+    git_ref: str | None = None,
+    stack_ref: str | None = None,
+    git_ssh_key_encrypted: str = "",
+    executor: str = "local",
+    secret_ref: str | None = None,
+    source_name: str | None = None,
+    runtime_name: str | None = None,
+    **stack_fields,
+) -> Stack:
+    if git_url:
+        source = Source(
+            name=source_name or f"{name} source",
+            git_url=git_url,
+            git_ref=git_ref or "main",
+            local_path=None,
+            git_ssh_key_encrypted=git_ssh_key_encrypted,
+        )
+    else:
+        source = Source(
+            name=source_name or f"{name} source",
+            git_url=None,
+            git_ref=None,
+            local_path=local_path,
+            git_ssh_key_encrypted=git_ssh_key_encrypted,
+        )
+    runtime = Runtime(
+        name=runtime_name or f"{name} runtime",
+        executor=executor,
+        secret_ref=secret_ref,
+    )
+    return Stack(
+        name=name,
+        deploy_file=deploy_file,
+        inventory=inventory,
+        source=source,
+        runtime=runtime,
+        git_ref=stack_ref,
+        **stack_fields,
+    )
 
 
 def add_user(

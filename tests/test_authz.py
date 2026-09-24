@@ -3,18 +3,21 @@ from unittest.mock import patch
 from sqlalchemy import select
 
 from stablehand.models import ApiToken, Integration, Run, RunState, Stack
+from stablehand.runtimes.service import save_runtime
 from stablehand.security import hash_token
-from tests.conftest import add_user, auth, login
+from stablehand.sources.service import save_source
+from tests.conftest import add_user, auth, login, make_stack
+
+
+def _binding(db, name: str = "edge"):
+    source = save_source(db, source=None, name=name, git_url="", git_ref="", local_path="/tmp/edge")
+    runtime = save_runtime(db, runtime=None, name=name, executor="local", secret_ref="")
+    db.commit()
+    return {"source_id": str(source.id), "runtime_id": str(runtime.id)}
 
 
 def _stack(db, path: str) -> Stack:
-    stack = Stack(
-        name="demo",
-        deploy_file="deploy.py",
-        inventory="inventory.py",
-        executor="local",
-        local_path=path,
-    )
+    stack = make_stack(local_path=path)
     db.add(stack)
     db.commit()
     db.refresh(stack)
@@ -36,8 +39,7 @@ def test_login_and_csrf(client, db):
             "deploy_file": "deploy.py",
             "inventory": "inventory.py",
             "default_limit": " web-* , canary ",
-            "executor": "local",
-            "local_path": "/tmp/edge",
+            **_binding(db),
         },
         headers=auth(token),
         follow_redirects=False,
@@ -75,8 +77,7 @@ def test_caught_stack_error_rolls_back_request(client, db):
             "name": "Must Roll Back",
             "deploy_file": "deploy.py",
             "inventory": "inventory.py",
-            "executor": "local",
-            "local_path": "/tmp/edge",
+            **_binding(db, name="rollback"),
             "approver_user_id": "not-a-uuid",
         },
         headers=auth(token),

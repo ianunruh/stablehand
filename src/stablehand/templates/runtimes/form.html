@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% import "components/macros.html" as ui %}
+{% block title %}{{ runtime.name if runtime else 'New runtime' }} · Stablehand{% endblock %}
+{% block content %}
+{% set page_title = 'Edit ' ~ runtime.name if runtime else 'New runtime' %}
+{% call ui.page_header(page_title, 'The executor and host secret stacks share.', 'Runtimes', '/runtimes') %}{% endcall %}
+<form class="sh-form-card space-y-4" method="post" action="{{ '/runtimes/' ~ runtime.id if runtime else '/runtimes' }}">
+  {{ ui.csrf() }}
+  {% set f = form if form is defined and form else none %}
+  {{ ui.field('Name', 'name', f.name if f else (runtime.name if runtime else ''), required=true) }}
+  {% set executor_value = f.executor if f else (runtime.executor if runtime else 'local') %}
+  {% call ui.select_field('Executor', 'executor') %}
+      <option value="local" {% if executor_value == 'local' %}selected{% endif %}>Local subprocess</option>
+      <option value="kubernetes" {% if executor_value == 'kubernetes' %}selected{% endif %}>Kubernetes Job</option>
+  {% endcall %}
+  {{ ui.field('Secret ref', 'secret_ref', f.secret_ref if f else (runtime.secret_ref if runtime and runtime.secret_ref else ''), 'text', 'Local directory or Kubernetes secret name with a host SSH key.') }}
+  <button class="sh-btn sh-btn-primary" type="submit">Save runtime</button>
+</form>
+{% endblock %}

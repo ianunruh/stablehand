@@ -131,6 +131,38 @@ class OidcSettings(Base):
     scopes: Mapped[str] = mapped_column(String(255), default="openid email profile")
 
 
+class Source(Base):
+    __tablename__ = "sources"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    git_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    git_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    local_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    git_ssh_key_encrypted: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    stacks: Mapped[list[Stack]] = relationship(back_populates="source")
+
+
+class Runtime(Base):
+    __tablename__ = "runtimes"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    executor: Mapped[str] = mapped_column(String(32), default=ExecutorKind.local.value)
+    secret_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    stacks: Mapped[list[Stack]] = relationship(back_populates="runtime")
+
+
 class Stack(Base):
     __tablename__ = "stacks"
 
@@ -139,12 +171,9 @@ class Stack(Base):
     deploy_file: Mapped[str] = mapped_column(String(500))
     inventory: Mapped[str] = mapped_column(String(500))
     default_limit: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    executor: Mapped[str] = mapped_column(String(32), default=ExecutorKind.local.value)
-    git_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sources.id", ondelete="RESTRICT"))
+    runtime_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runtimes.id", ondelete="RESTRICT"))
     git_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    local_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    secret_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    git_ssh_key_encrypted: Mapped[str] = mapped_column(Text, default="", server_default="")
     schedule_cron: Mapped[str | None] = mapped_column(String(100), nullable=True)
     schedule_next_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -154,6 +183,8 @@ class Stack(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    source: Mapped[Source] = relationship(back_populates="stacks")
+    runtime: Mapped[Runtime] = relationship(back_populates="stacks")
     approvers: Mapped[list[StackApprover]] = relationship(
         back_populates="stack", cascade="all, delete-orphan"
     )

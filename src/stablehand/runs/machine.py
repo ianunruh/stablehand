@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from stablehand.config import get_settings
 from stablehand.db import get_session
@@ -24,6 +24,7 @@ from stablehand.runs.service import (
 )
 from stablehand.security import aware, hash_token, utcnow
 from stablehand.source import SourceError, resolve_commit
+from stablehand.stacks.service import load_run_stack, load_stack
 
 router = APIRouter(prefix="/api")
 
@@ -84,7 +85,7 @@ def open_run(
     db: Session = Depends(get_session),
 ) -> dict:
     _ci_token(request, db, stack_id)
-    stack = db.get(Stack, stack_id)
+    stack = db.scalar(select(Stack).where(Stack.id == stack_id).options(*load_stack()))
     if stack is None:
         raise HTTPException(status_code=404, detail="Stack not found.")
     commit = (body.commit or "").strip()
@@ -112,7 +113,7 @@ def read_run(run_id: uuid.UUID, request: Request, db: Session = Depends(get_sess
         raise HTTPException(status_code=401, detail="CI token required.")
     if token.expires_at is not None and aware(token.expires_at) <= utcnow():
         raise HTTPException(status_code=401, detail="CI token expired.")
-    run = db.scalar(select(Run).where(Run.id == run_id).options(selectinload(Run.stack)))
+    run = db.scalar(select(Run).where(Run.id == run_id).options(load_run_stack()))
     if run is None or run.stack_id != token.stack_id:
         raise HTTPException(status_code=404, detail="Run not found.")
     return _public_run(run)

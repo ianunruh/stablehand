@@ -6,7 +6,8 @@ from kubernetes.client import ApiException
 
 from stablehand.executors import kubernetes
 from stablehand.executors.kubernetes import KubernetesExecutor, _resource_names
-from stablehand.models import Execution, ExecutorKind, Run, RunState, Stack
+from stablehand.models import Execution, ExecutorKind, Run, RunState
+from tests.conftest import make_stack
 
 
 def test_resource_names_are_unique_per_execution():
@@ -35,14 +36,10 @@ def test_start_cleans_up_resources_when_job_creation_fails(monkeypatch):
         trigger="manual",
         state=RunState.apply_running.value,
     )
-    stack = Stack(
+    stack = make_stack(
         id=stack_id,
-        name="demo",
-        deploy_file="deploy.py",
-        inventory="inventory.py",
-        executor=ExecutorKind.kubernetes.value,
         git_url="https://example.test/repo.git",
-        git_ref="main",
+        executor=ExecutorKind.kubernetes.value,
     )
 
     with pytest.raises(RuntimeError, match="job failed"):
@@ -86,7 +83,7 @@ def test_recover_finds_job_by_execution_id(monkeypatch):
     execution_id = uuid.uuid4()
     run = Run(id=run_id)
     execution = Execution(id=execution_id, phase="apply")
-    stack = Stack(id=uuid.uuid4())
+    stack = make_stack(id=uuid.uuid4())
     job_name, secret_name = _resource_names(run_id, execution_id, "apply")
 
     recovered = KubernetesExecutor().recover(execution, run, stack)
@@ -106,7 +103,7 @@ def test_recover_missing_job_removes_orphaned_secret(monkeypatch):
     execution_id = uuid.uuid4()
     run = Run(id=run_id)
     execution = Execution(id=execution_id, phase="check")
-    stack = Stack(id=uuid.uuid4())
+    stack = make_stack(id=uuid.uuid4())
     _, secret_name = _resource_names(run_id, execution_id, "check")
 
     assert KubernetesExecutor().recover(execution, run, stack) is None

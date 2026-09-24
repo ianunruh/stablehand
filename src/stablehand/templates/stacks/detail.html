@@ -2,8 +2,7 @@
 {% import "components/macros.html" as ui %}
 {% block title %}{{ stack.name }} · Stablehand{% endblock %}
 {% block content %}
-{% set stack_source = stack.git_url or stack.local_path %}
-{% set stack_subtitle = stack.executor|capitalize ~ ' executor · ' ~ stack_source %}
+{% set stack_subtitle = stack.source.name ~ ' · ' ~ stack.runtime.name %}
 {% set check_popover_id = 'start-check-' ~ stack.id %}
 {% call ui.page_header(stack.name, stack_subtitle, 'Stacks', '/stacks') %}
     {% if user.role == 'admin' %}
@@ -27,8 +26,13 @@
     <button class="sh-btn sh-btn-primary w-full" type="submit">Start check</button>
   </form>
 </div>
-{% if stack.git_ssh_key_encrypted %}
+{% if stack.source.git_ssh_key_encrypted %}
 <p class="sh-meta"><span>Git auth</span><span>Deploy key saved</span></p>
+{% endif %}
+{% if stack.git_ref %}
+<p class="sh-meta"><span>Git ref</span><span class="sh-mono">{{ stack.git_ref }}</span></p>
+{% elif stack.source.git_ref %}
+<p class="sh-meta"><span>Git ref</span><span class="sh-mono">{{ stack.source.git_ref }}</span></p>
 {% endif %}
 {% if stack.schedule_cron %}
 <p class="sh-meta"><span>Schedule</span><span class="sh-mono">{{ stack.schedule_cron }}</span>{% if stack.schedule_next_at %}<span aria-hidden="true">·</span>{{ ui.timestamp(stack.schedule_next_at, 'Next') }}{% endif %}</p>

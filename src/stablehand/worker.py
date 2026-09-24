@@ -33,7 +33,7 @@ from stablehand.runs.service import (
 )
 from stablehand.security import aware, utcnow
 from stablehand.source import SourceError, resolve_commit
-from stablehand.stacks.service import next_schedule
+from stablehand.stacks.service import load_run_stack, load_stack, next_schedule
 
 logger = logging.getLogger(__name__)
 LOCK_KEY = 8142024
@@ -82,9 +82,9 @@ def _schedule_due(session: Session) -> None:
     now = utcnow()
     stacks = list(
         session.scalars(
-            select(Stack).where(
-                Stack.schedule_cron.is_not(None), Stack.schedule_next_at.is_not(None)
-            )
+            select(Stack)
+            .where(Stack.schedule_cron.is_not(None), Stack.schedule_next_at.is_not(None))
+            .options(*load_stack())
         )
     )
     session.commit()
@@ -147,7 +147,7 @@ def _dispatch(session: Session, queued: RunState, running: RunState, phase: str)
         session.scalars(
             select(Run)
             .where(Run.state == queued.value)
-            .options(selectinload(Run.stack).selectinload(Stack.approvers))
+            .options(load_run_stack(selectinload(Stack.approvers)))
         )
     )
     session.commit()
@@ -162,7 +162,7 @@ def _dispatch(session: Session, queued: RunState, running: RunState, phase: str)
                 id=new_id(),
                 run_id=run.id,
                 phase=phase,
-                backend=stack.executor,
+                backend=stack.runtime.executor,
                 status=ExecutionStatus.pending.value,
             )
             session.add(execution)
@@ -179,7 +179,7 @@ def _start_execution(session: Session, execution_id, token: str) -> None:
     execution = session.scalar(
         select(Execution)
         .where(Execution.id == execution_id)
-        .options(selectinload(Execution.run).selectinload(Run.stack))
+        .options(selectinload(Execution.run).options(load_run_stack()))
     )
     if execution is None or execution.status != ExecutionStatus.pending.value:
         session.rollback()
@@ -188,7 +188,7 @@ def _start_execution(session: Session, execution_id, token: str) -> None:
     stack = run.stack
     session.commit()
     try:
-        ref, secret_name = for_stack(stack.executor).start(
+        ref, secret_name = for_stack(stack.runtime.executor).start(
             run,
             stack,
             execution.phase,
@@ -231,7 +231,7 @@ def _recover_pending(session: Session) -> None:
         execution = session.scalar(
             select(Execution)
             .where(Execution.id == execution_id)
-            .options(selectinload(Execution.run).selectinload(Run.stack))
+            .options(selectinload(Execution.run).options(load_run_stack()))
         )
         if execution is None or execution.status != ExecutionStatus.pending.value:
             session.rollback()
@@ -295,7 +295,7 @@ def _poll(session: Session) -> None:
         session.scalars(
             select(Execution)
             .where(Execution.status == ExecutionStatus.running.value)
-            .options(selectinload(Execution.run).selectinload(Run.stack))
+            .options(selectinload(Execution.run).options(load_run_stack()))
         )
     )
     session.commit()
@@ -303,7 +303,9 @@ def _poll(session: Session) -> None:
     for execution in executions:
         run = execution.run
         try:
-            status = for_stack(run.stack.executor).poll(execution.ref, execution.secret_name)
+            status = for_stack(run.stack.runtime.executor).poll(
+                execution.ref, execution.secret_name
+            )
         except Exception:
             logger.exception("poll failed for %s", execution.ref)
             continue
@@ -321,7 +323,7 @@ def _poll(session: Session) -> None:
         execution.finished_at = execution.finished_at or now
         session.commit()
         try:
-            for_stack(run.stack.executor).cleanup(execution.ref, execution.secret_name)
+            for_stack(run.stack.runtime.executor).cleanup(execution.ref, execution.secret_name)
         except Exception:
             logger.exception("cleanup failed for %s", execution.ref)
 

@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from stablehand.auth.oidc import OidcError, authorization_redirect, exchange_identity, new_state
@@ -27,7 +27,17 @@ from stablehand.auth.service import (
 from stablehand.config import get_settings
 from stablehand.db import get_session
 from stablehand.integrations.service import list_integrations, save_webhook
-from stablehand.models import ApiToken, Integration, Role, Run, RunState, Stack, User
+from stablehand.models import (
+    ApiToken,
+    Integration,
+    Role,
+    Run,
+    RunState,
+    Runtime,
+    Source,
+    Stack,
+    User,
+)
 from stablehand.runs.service import (
     RunError,
     Trigger,
@@ -36,10 +46,15 @@ from stablehand.runs.service import (
     create_run,
     reject_run,
 )
-from stablehand.source import SourceError, resolve_commit
+from stablehand.runtimes.service import RuntimeConfigError, delete_runtime, save_runtime
+from stablehand.source import SourceError as CheckoutError
+from stablehand.source import resolve_commit
+from stablehand.sources.service import SourceError, delete_source, save_source
 from stablehand.stacks.service import (
     StackError,
     issue_ci_token,
+    load_run_stack,
+    load_stack,
     revoke_ci_token,
     save_stack,
     user_choices,
@@ -201,7 +216,7 @@ def inbox(request: Request, user: User = Depends(require_user), db: Session = De
 def stack_list(
     request: Request, user: User = Depends(require_user), db: Session = Depends(get_session)
 ):
-    stacks = list(db.scalars(select(Stack).order_by(Stack.name)))
+    stacks = list(db.scalars(select(Stack).order_by(Stack.name).options(*load_stack())))
     latest: dict = {}
     for stack in stacks:
         latest[stack.id] = db.scalar(
@@ -219,9 +234,7 @@ def stack_new(
         "stacks/form.html",
         user=user,
         stack=None,
-        users=user_choices(db),
-        selected_users=set(),
-        group_text="",
+        **_stack_form_context(db, None),
     )
 
 
@@ -234,13 +247,9 @@ def stack_create(
     deploy_file: Annotated[str, Form()] = "",
     inventory: Annotated[str, Form()] = "",
     default_limit: Annotated[str, Form()] = "",
-    executor: Annotated[str, Form()] = "local",
-    git_url: Annotated[str, Form()] = "",
+    source_id: Annotated[str, Form()] = "",
+    runtime_id: Annotated[str, Form()] = "",
     git_ref: Annotated[str, Form()] = "",
-    local_path: Annotated[str, Form()] = "",
-    secret_ref: Annotated[str, Form()] = "",
-    git_ssh_key: Annotated[str, Form()] = "",
-    clear_git_ssh_key: Annotated[str, Form()] = "",
     schedule_cron: Annotated[str, Form()] = "",
     approver_groups: Annotated[str, Form()] = "",
     approver_user_id: Annotated[list[str] | None, Form()] = None,
@@ -253,16 +262,12 @@ def stack_create(
             deploy_file=deploy_file,
             inventory=inventory,
             default_limit=default_limit,
-            executor=executor,
-            git_url=git_url,
+            source_id=source_id,
+            runtime_id=runtime_id,
             git_ref=git_ref,
-            local_path=local_path,
-            secret_ref=secret_ref,
             schedule_cron=schedule_cron,
             approver_user_ids=approver_user_id or [],
             approver_groups=approver_groups,
-            git_ssh_key=git_ssh_key,
-            clear_git_ssh_key=bool(clear_git_ssh_key),
         )
     except (StackError, ValueError) as exc:
         db.rollback()
@@ -274,12 +279,16 @@ def stack_create(
             "stacks/form.html",
             user=user,
             stack=None,
-            users=user_choices(db),
-            selected_users=set(approver_user_id or []),
-            group_text=approver_groups,
             error=message,
             form=_form_state(locals()),
             status_code=400,
+            **_stack_form_context(
+                db,
+                None,
+                selected_users=set(approver_user_id or []),
+                group_text=approver_groups,
+                source_id=source_id,
+            ),
         )
     return _redirect(f"/stacks/{stack.id}", notice="Stack saved.")
 
@@ -327,13 +336,9 @@ def stack_update(
     deploy_file: Annotated[str, Form()] = "",
     inventory: Annotated[str, Form()] = "",
     default_limit: Annotated[str, Form()] = "",
-    executor: Annotated[str, Form()] = "local",
-    git_url: Annotated[str, Form()] = "",
+    source_id: Annotated[str, Form()] = "",
+    runtime_id: Annotated[str, Form()] = "",
     git_ref: Annotated[str, Form()] = "",
-    local_path: Annotated[str, Form()] = "",
-    secret_ref: Annotated[str, Form()] = "",
-    git_ssh_key: Annotated[str, Form()] = "",
-    clear_git_ssh_key: Annotated[str, Form()] = "",
     schedule_cron: Annotated[str, Form()] = "",
     approver_groups: Annotated[str, Form()] = "",
     approver_user_id: Annotated[list[str] | None, Form()] = None,
@@ -347,16 +352,12 @@ def stack_update(
             deploy_file=deploy_file,
             inventory=inventory,
             default_limit=default_limit,
-            executor=executor,
-            git_url=git_url,
+            source_id=source_id,
+            runtime_id=runtime_id,
             git_ref=git_ref,
-            local_path=local_path,
-            secret_ref=secret_ref,
             schedule_cron=schedule_cron,
             approver_user_ids=approver_user_id or [],
             approver_groups=approver_groups,
-            git_ssh_key=git_ssh_key,
-            clear_git_ssh_key=bool(clear_git_ssh_key),
         )
     except (StackError, ValueError) as exc:
         db.rollback()
@@ -368,12 +369,16 @@ def stack_update(
             "stacks/form.html",
             user=user,
             stack=stack,
-            users=user_choices(db),
-            selected_users=set(approver_user_id or []),
-            group_text=approver_groups,
             error=message,
             form=_form_state(locals()),
             status_code=400,
+            **_stack_form_context(
+                db,
+                stack,
+                selected_users=set(approver_user_id or []),
+                group_text=approver_groups,
+                source_id=source_id,
+            ),
         )
     return _redirect(f"/stacks/{stack.id}", notice="Stack saved.")
 
@@ -391,7 +396,7 @@ def stack_run(
         run = create_run(
             db, stack, commit_sha=commit, trigger=Trigger.manual, user=user, limit=limit
         )
-    except (SourceError, RunError) as exc:
+    except (CheckoutError, RunError) as exc:
         db.rollback()
         return _redirect(f"/stacks/{stack.id}", error=exc.message)
     return RedirectResponse(f"/runs/{run.id}", status_code=303)
@@ -544,6 +549,240 @@ def run_reject(
     return RedirectResponse(f"/runs/{run.id}", status_code=303)
 
 
+@router.get("/sources")
+def source_list(
+    request: Request, user: User = Depends(require_admin), db: Session = Depends(get_session)
+):
+    sources = list(db.scalars(select(Source).order_by(Source.name)))
+    return render(
+        request,
+        "sources/list.html",
+        user=user,
+        sources=sources,
+        usage=_usage(db, Stack.source_id),
+    )
+
+
+@router.get("/sources/new")
+def source_new(request: Request, user: User = Depends(require_admin)):
+    return render(request, "sources/form.html", user=user, source=None)
+
+
+@router.post("/sources")
+def source_create(
+    request: Request,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+    name: Annotated[str, Form()] = "",
+    git_url: Annotated[str, Form()] = "",
+    git_ref: Annotated[str, Form()] = "",
+    local_path: Annotated[str, Form()] = "",
+    git_ssh_key: Annotated[str, Form()] = "",
+    clear_git_ssh_key: Annotated[str, Form()] = "",
+):
+    try:
+        source = save_source(
+            db,
+            source=None,
+            name=name,
+            git_url=git_url,
+            git_ref=git_ref,
+            local_path=local_path,
+            git_ssh_key=git_ssh_key,
+            clear_git_ssh_key=bool(clear_git_ssh_key),
+        )
+    except SourceError as exc:
+        db.rollback()
+        return render(
+            request,
+            "sources/form.html",
+            user=user,
+            source=None,
+            error=exc.message,
+            form=_form_state(locals()),
+            status_code=400,
+        )
+    return _redirect(f"/sources/{source.id}/edit", notice="Source saved.")
+
+
+@router.get("/sources/{source_id}/edit")
+def source_edit(
+    source_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    source = db.get(Source, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found.")
+    return render(request, "sources/form.html", user=user, source=source)
+
+
+@router.post("/sources/{source_id}")
+def source_update(
+    source_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+    name: Annotated[str, Form()] = "",
+    git_url: Annotated[str, Form()] = "",
+    git_ref: Annotated[str, Form()] = "",
+    local_path: Annotated[str, Form()] = "",
+    git_ssh_key: Annotated[str, Form()] = "",
+    clear_git_ssh_key: Annotated[str, Form()] = "",
+):
+    source = db.get(Source, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found.")
+    try:
+        save_source(
+            db,
+            source=source,
+            name=name,
+            git_url=git_url,
+            git_ref=git_ref,
+            local_path=local_path,
+            git_ssh_key=git_ssh_key,
+            clear_git_ssh_key=bool(clear_git_ssh_key),
+        )
+    except SourceError as exc:
+        db.rollback()
+        return render(
+            request,
+            "sources/form.html",
+            user=user,
+            source=source,
+            error=exc.message,
+            form=_form_state(locals()),
+            status_code=400,
+        )
+    return _redirect(f"/sources/{source.id}/edit", notice="Source saved.")
+
+
+@router.post("/sources/{source_id}/delete")
+def source_delete(
+    source_id: uuid.UUID,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    del user
+    source = db.get(Source, source_id)
+    if source is None:
+        return _redirect("/sources", error="Source not found.")
+    try:
+        delete_source(db, source)
+    except SourceError as exc:
+        db.rollback()
+        return _redirect("/sources", error=exc.message)
+    return _redirect("/sources", notice="Source removed.")
+
+
+@router.get("/runtimes")
+def runtime_list(
+    request: Request, user: User = Depends(require_admin), db: Session = Depends(get_session)
+):
+    runtimes = list(db.scalars(select(Runtime).order_by(Runtime.name)))
+    return render(
+        request,
+        "runtimes/list.html",
+        user=user,
+        runtimes=runtimes,
+        usage=_usage(db, Stack.runtime_id),
+    )
+
+
+@router.get("/runtimes/new")
+def runtime_new(request: Request, user: User = Depends(require_admin)):
+    return render(request, "runtimes/form.html", user=user, runtime=None)
+
+
+@router.post("/runtimes")
+def runtime_create(
+    request: Request,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+    name: Annotated[str, Form()] = "",
+    executor: Annotated[str, Form()] = "local",
+    secret_ref: Annotated[str, Form()] = "",
+):
+    try:
+        runtime = save_runtime(
+            db, runtime=None, name=name, executor=executor, secret_ref=secret_ref
+        )
+    except RuntimeConfigError as exc:
+        db.rollback()
+        return render(
+            request,
+            "runtimes/form.html",
+            user=user,
+            runtime=None,
+            error=exc.message,
+            form=_form_state(locals()),
+            status_code=400,
+        )
+    return _redirect(f"/runtimes/{runtime.id}/edit", notice="Runtime saved.")
+
+
+@router.get("/runtimes/{runtime_id}/edit")
+def runtime_edit(
+    runtime_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    runtime = db.get(Runtime, runtime_id)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail="Runtime not found.")
+    return render(request, "runtimes/form.html", user=user, runtime=runtime)
+
+
+@router.post("/runtimes/{runtime_id}")
+def runtime_update(
+    runtime_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+    name: Annotated[str, Form()] = "",
+    executor: Annotated[str, Form()] = "local",
+    secret_ref: Annotated[str, Form()] = "",
+):
+    runtime = db.get(Runtime, runtime_id)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail="Runtime not found.")
+    try:
+        save_runtime(db, runtime=runtime, name=name, executor=executor, secret_ref=secret_ref)
+    except RuntimeConfigError as exc:
+        db.rollback()
+        return render(
+            request,
+            "runtimes/form.html",
+            user=user,
+            runtime=runtime,
+            error=exc.message,
+            form=_form_state(locals()),
+            status_code=400,
+        )
+    return _redirect(f"/runtimes/{runtime.id}/edit", notice="Runtime saved.")
+
+
+@router.post("/runtimes/{runtime_id}/delete")
+def runtime_delete(
+    runtime_id: uuid.UUID,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    del user
+    runtime = db.get(Runtime, runtime_id)
+    if runtime is None:
+        return _redirect("/runtimes", error="Runtime not found.")
+    try:
+        delete_runtime(db, runtime)
+    except RuntimeConfigError as exc:
+        db.rollback()
+        return _redirect("/runtimes", error=exc.message)
+    return _redirect("/runtimes", notice="Runtime removed.")
+
+
 @router.get("/settings/users")
 def users_page(
     request: Request, user: User = Depends(require_admin), db: Session = Depends(get_session)
@@ -649,7 +888,9 @@ def integrations_delete(
 
 def _stack_or_404(db: Session, stack_id: uuid.UUID) -> Stack:
     stack = db.scalar(
-        select(Stack).where(Stack.id == stack_id).options(selectinload(Stack.approvers))
+        select(Stack)
+        .where(Stack.id == stack_id)
+        .options(*load_stack(), selectinload(Stack.approvers))
     )
     if stack is None:
         raise HTTPException(status_code=404, detail="Stack not found.")
@@ -661,7 +902,7 @@ def _run_or_404(db: Session, run_id: uuid.UUID) -> Run:
         select(Run)
         .where(Run.id == run_id)
         .options(
-            selectinload(Run.stack).selectinload(Stack.approvers),
+            load_run_stack(selectinload(Stack.approvers)),
             selectinload(Run.logs),
             selectinload(Run.executions),
             selectinload(Run.trigger_user),
@@ -674,12 +915,53 @@ def _run_or_404(db: Session, run_id: uuid.UUID) -> Run:
     return run
 
 
-def _stack_form_context(db: Session, stack: Stack) -> dict:
+def _stack_form_context(
+    db: Session,
+    stack: Stack | None,
+    *,
+    selected_users: set[str] | None = None,
+    group_text: str | None = None,
+    source_id: str = "",
+) -> dict:
+    sources = list(db.scalars(select(Source).order_by(Source.name)))
+    runtimes = list(db.scalars(select(Runtime).order_by(Runtime.name)))
+    if stack is not None and not source_id:
+        source_id = str(stack.source_id)
+    elif not source_id and sources:
+        source_id = str(sources[0].id)
+    if selected_users is None:
+        selected_users = (
+            {str(row.user_id) for row in stack.approvers if row.user_id}
+            if stack is not None
+            else set()
+        )
+    if group_text is None:
+        group_text = (
+            ", ".join(row.group_name for row in stack.approvers if row.group_name)
+            if stack is not None
+            else ""
+        )
     return {
         "users": user_choices(db),
-        "selected_users": {str(row.user_id) for row in stack.approvers if row.user_id},
-        "group_text": ", ".join(row.group_name for row in stack.approvers if row.group_name),
+        "sources": sources,
+        "runtimes": runtimes,
+        "ref_hint": _ref_hint(sources, source_id),
+        "selected_users": selected_users,
+        "group_text": group_text,
     }
+
+
+def _ref_hint(sources: list[Source], source_id: str) -> str:
+    chosen = next((item for item in sources if str(item.id) == source_id), None)
+    if chosen is not None and chosen.git_url and chosen.git_ref:
+        return f"Leave blank to use {chosen.git_ref}."
+    if chosen is not None and chosen.local_path and not chosen.git_url:
+        return "This source is a local path, so a git ref does not apply."
+    return "Leave blank to use the source ref."
+
+
+def _usage(db: Session, column) -> dict:
+    return dict(db.execute(select(column, func.count()).group_by(column)).all())
 
 
 def _form_state(values: dict) -> dict:
@@ -688,10 +970,12 @@ def _form_state(values: dict) -> dict:
         "deploy_file",
         "inventory",
         "default_limit",
-        "executor",
-        "git_url",
+        "source_id",
+        "runtime_id",
         "git_ref",
+        "git_url",
         "local_path",
+        "executor",
         "secret_ref",
         "schedule_cron",
     ]

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% import "components/macros.html" as ui %}
+{% block title %}{{ source.name if source else 'New source' }} · Stablehand{% endblock %}
+{% block content %}
+{% set page_title = 'Edit ' ~ source.name if source else 'New source' %}
+{% call ui.page_header(page_title, 'Where stacks clone code, and the key used to fetch it.', 'Sources', '/sources') %}{% endcall %}
+<form class="sh-form-card space-y-4" method="post" action="{{ '/sources/' ~ source.id if source else '/sources' }}">
+  {{ ui.csrf() }}
+  {% set f = form if form is defined and form else none %}
+  {{ ui.field('Name', 'name', f.name if f else (source.name if source else ''), required=true) }}
+  {{ ui.field('Git URL', 'git_url', f.git_url if f else (source.git_url if source and source.git_url else ''), 'text', 'Leave empty to use a local path.') }}
+  {{ ui.field('Default ref', 'git_ref', f.git_ref if f else (source.git_ref if source and source.git_ref else ''), 'text', 'Used when a stack does not set its own ref. Defaults to main for a git URL.') }}
+  {% set deploy_key_saved = source and source.git_ssh_key_encrypted %}
+  {% set deploy_key_hint = 'A deploy key is saved. Paste a replacement to change it, or leave this blank to keep it. The git URL must be SSH, such as git@github.com:org/repo.git.' if deploy_key_saved else 'Read-only SSH private key for a private repository. The git URL must be SSH, such as git@github.com:org/repo.git.' %}
+  {{ ui.textarea('Git deploy key', 'git_ssh_key', deploy_key_hint) }}
+  {% if deploy_key_saved %}
+  {{ ui.checkbox('Remove saved deploy key', 'clear_git_ssh_key') }}
+  {% endif %}
+  {{ ui.field('Local path', 'local_path', f.local_path if f else (source.local_path if source and source.local_path else ''), 'text', 'Used when there is no git URL. The worker must be able to read it.') }}
+  <button class="sh-btn sh-btn-primary" type="submit">Save source</button>
+</form>
+{% endblock %}

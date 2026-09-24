@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "components/macros.html" as ui %}
+{% block title %}Sources · Stablehand{% endblock %}
+{% block content %}
+{% call ui.page_header('Sources', 'Git repositories and local trees shared by stacks.') %}
+  <a class="sh-btn sh-btn-primary" href="/sources/new">New source</a>
+{% endcall %}
+<section class="sh-section" aria-label="Sources">
+<ul class="sh-list">
+  {% for source in sources %}
+  {% set count = usage.get(source.id, 0) %}
+  <li class="sh-list-row">
+    <a class="sh-list-primary" href="/sources/{{ source.id }}/edit">
+      <span class="sh-list-title">{{ source.name }}</span>
+      <span class="sh-list-meta">
+        <span class="sh-mono">{{ source.git_url or source.local_path }}</span>
+        <span aria-hidden="true">·</span>
+        <span>{{ count }} stack{% if count != 1 %}s{% endif %}</span>
+      </span>
+    </a>
+    <form method="post" action="/sources/{{ source.id }}/delete">
+      {{ ui.csrf() }}
+      <button class="sh-text-action" type="submit">Remove</button>
+    </form>
+  </li>
+  {% else %}
+  <li class="sh-empty">No sources yet.</li>
+  {% endfor %}
+</ul>
+</section>
+{% endblock %}

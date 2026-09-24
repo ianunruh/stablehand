@@ -29,6 +29,8 @@
         <a class="sh-nav-link" href="/" {% if path == '/' %}aria-current="page"{% endif %}>Inbox</a>
         <a class="sh-nav-link" href="/stacks" {% if path.startswith('/stacks') or path.startswith('/runs') %}aria-current="page"{% endif %}>Stacks</a>
         {% if user.role == 'admin' %}
+        <a class="sh-nav-link" href="/sources" {% if path.startswith('/sources') %}aria-current="page"{% endif %}>Sources</a>
+        <a class="sh-nav-link" href="/runtimes" {% if path.startswith('/runtimes') %}aria-current="page"{% endif %}>Runtimes</a>
         <a class="sh-nav-link" href="/settings/users" {% if path.startswith('/settings/users') %}aria-current="page"{% endif %}>Users</a>
         <a class="sh-nav-link" href="/settings/auth" {% if path.startswith('/settings/auth') %}aria-current="page"{% endif %}>OIDC</a>
         <a class="sh-nav-link" href="/settings/integrations" {% if path.startswith('/settings/integrations') %}aria-current="page"{% endif %}>Integrations</a>

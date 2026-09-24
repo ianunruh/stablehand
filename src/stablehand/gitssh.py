@@ -36,7 +36,8 @@ def is_ssh_git_url(url: str) -> bool:
 
 
 def private_key(stack: Stack) -> str:
-    encrypted = stack.git_ssh_key_encrypted or ""
+    source = stack.source
+    encrypted = (source.git_ssh_key_encrypted if source is not None else "") or ""
     if not encrypted:
         return ""
     try:

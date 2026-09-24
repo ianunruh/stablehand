@@ -9,12 +9,13 @@ from sqlalchemy import select
 from stablehand.executors.kubernetes import KubernetesExecutor
 from stablehand.executors.local import LocalExecutor
 from stablehand.gitssh import private_key
-from stablehand.models import Stack
+from stablehand.models import Runtime, Source, Stack
 from stablehand.runner import main as runner
-from stablehand.security import encrypt_secret
+from stablehand.security import decrypt_secret, encrypt_secret
 from stablehand.source import SourceError, resolve_commit
-from stablehand.stacks.service import StackError, save_stack
-from tests.conftest import add_user, auth, login
+from stablehand.sources.service import SourceError as SourceSaveError
+from stablehand.sources.service import save_source
+from tests.conftest import add_user, auth, login, make_stack
 
 DEPLOY_KEY = (
     "-----BEGIN OPENSSH PRIVATE KEY-----\n"
@@ -23,48 +24,40 @@ DEPLOY_KEY = (
 )
 
 
-def _save(db, stack=None, **overrides):
+def _source(db, source=None, **overrides):
     values = {
         "name": "ops",
-        "deploy_file": "deploy.py",
-        "inventory": "inventory.py",
-        "default_limit": "",
-        "executor": "kubernetes",
         "git_url": "git@github.com:org/kcloud-ops.git",
         "git_ref": "main",
         "local_path": "",
-        "secret_ref": "host-ssh",
-        "schedule_cron": "",
-        "approver_user_ids": [],
-        "approver_groups": "",
     }
     values.update(overrides)
-    return save_stack(db, stack=stack, **values)
+    return save_source(db, source=source, **values)
 
 
 def test_deploy_key_is_stored_encrypted_and_blank_keeps_it(db):
-    stack = _save(db, git_ssh_key=DEPLOY_KEY)
+    source = _source(db, git_ssh_key=DEPLOY_KEY)
     db.commit()
 
-    assert stack.git_ssh_key_encrypted
-    assert "deploy-key-marker-9f3a" not in stack.git_ssh_key_encrypted
-    assert private_key(stack) == DEPLOY_KEY
+    assert source.git_ssh_key_encrypted
+    assert "deploy-key-marker-9f3a" not in source.git_ssh_key_encrypted
+    assert decrypt_secret(source.git_ssh_key_encrypted) == DEPLOY_KEY
 
-    kept = _save(db, stack=stack, git_ssh_key="  ")
-    assert private_key(kept) == DEPLOY_KEY
+    kept = _source(db, source=source, git_ssh_key="  ")
+    assert decrypt_secret(kept.git_ssh_key_encrypted) == DEPLOY_KEY
 
-    cleared = _save(db, stack=stack, clear_git_ssh_key=True)
-    assert private_key(cleared) == ""
+    cleared = _source(db, source=source, clear_git_ssh_key=True)
+    assert cleared.git_ssh_key_encrypted == ""
 
 
 def test_https_url_rejects_a_deploy_key(db):
-    with pytest.raises(StackError, match="SSH git URL"):
-        _save(db, git_url="https://github.com/org/kcloud-ops.git", git_ssh_key=DEPLOY_KEY)
+    with pytest.raises(SourceSaveError, match="SSH git URL"):
+        _source(db, git_url="https://github.com/org/kcloud-ops.git", git_ssh_key=DEPLOY_KEY)
 
 
 def test_deploy_key_must_be_a_private_key(db):
-    with pytest.raises(StackError, match="PEM SSH private key"):
-        _save(db, git_ssh_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample")
+    with pytest.raises(SourceSaveError, match="PEM SSH private key"):
+        _source(db, git_ssh_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample")
 
 
 def test_resolve_commit_uses_deploy_key_and_removes_it(monkeypatch):
@@ -79,9 +72,8 @@ def test_resolve_commit_uses_deploy_key_and_removes_it(monkeypatch):
         return "abc123\trefs/heads/main\n"
 
     monkeypatch.setattr("stablehand.source.subprocess.check_output", check_output)
-    stack = Stack(
+    stack = make_stack(
         git_url="git@github.com:org/kcloud-ops.git",
-        git_ref="main",
         git_ssh_key_encrypted=encrypt_secret(DEPLOY_KEY),
     )
 
@@ -105,16 +97,15 @@ def test_resolve_commit_without_a_deploy_key_leaves_ssh_alone(monkeypatch):
         return "abc123\tHEAD\n"
 
     monkeypatch.setattr("stablehand.source.subprocess.check_output", check_output)
-    stack = Stack(git_url="https://example.test/repo.git", git_ref="main")
+    stack = make_stack(git_url="https://example.test/repo.git")
 
     assert resolve_commit(stack) == "abc123"
     assert "GIT_SSH_COMMAND" not in captured["env"]
 
 
 def test_unreadable_deploy_key_fails_commit_resolution():
-    stack = Stack(
+    stack = make_stack(
         git_url="git@github.com:org/kcloud-ops.git",
-        git_ref="main",
         git_ssh_key_encrypted="not-a-fernet-token",
     )
 
@@ -158,7 +149,10 @@ def test_local_executor_passes_a_private_key_file(monkeypatch, tmp_path):
 
     monkeypatch.setattr("stablehand.executors.local.subprocess.Popen", popen)
     execution_id = uuid.uuid4()
-    stack = Stack(git_ssh_key_encrypted=encrypt_secret(DEPLOY_KEY))
+    stack = make_stack(
+        git_url="git@github.com:org/kcloud-ops.git",
+        git_ssh_key_encrypted=encrypt_secret(DEPLOY_KEY),
+    )
     run = Mock(id=uuid.uuid4(), commit_sha="abc", limit=None)
 
     ref, secret_name = LocalExecutor().start(
@@ -190,7 +184,10 @@ def test_local_executor_removes_the_key_when_start_fails(monkeypatch, tmp_path):
 
     monkeypatch.setattr("stablehand.executors.local.subprocess.Popen", popen)
     execution_id = uuid.uuid4()
-    stack = Stack(git_ssh_key_encrypted=encrypt_secret(DEPLOY_KEY))
+    stack = make_stack(
+        git_url="git@github.com:org/kcloud-ops.git",
+        git_ssh_key_encrypted=encrypt_secret(DEPLOY_KEY),
+    )
     run = Mock(id=uuid.uuid4(), commit_sha="abc", limit=None)
 
     with pytest.raises(OSError, match="runner missing"):
@@ -205,14 +202,11 @@ def test_kubernetes_mounts_deploy_key_apart_from_the_host_secret(monkeypatch):
     monkeypatch.setattr("stablehand.executors.kubernetes._load_config", lambda: None)
     monkeypatch.setattr("stablehand.executors.kubernetes.client.CoreV1Api", lambda: core)
     monkeypatch.setattr("stablehand.executors.kubernetes.client.BatchV1Api", lambda: batch)
-    stack = Stack(
+    stack = make_stack(
         id=uuid.uuid4(),
         name="ops",
-        deploy_file="deploy.py",
-        inventory="inventory.py",
         executor="kubernetes",
         git_url="git@github.com:org/kcloud-ops.git",
-        git_ref="main",
         secret_ref="host-ssh",
         git_ssh_key_encrypted=encrypt_secret(DEPLOY_KEY),
     )
@@ -245,13 +239,7 @@ def test_kubernetes_omits_the_git_mount_without_a_deploy_key(monkeypatch):
     monkeypatch.setattr("stablehand.executors.kubernetes._load_config", lambda: None)
     monkeypatch.setattr("stablehand.executors.kubernetes.client.CoreV1Api", lambda: core)
     monkeypatch.setattr("stablehand.executors.kubernetes.client.BatchV1Api", lambda: batch)
-    stack = Stack(
-        id=uuid.uuid4(),
-        deploy_file="deploy.py",
-        inventory="inventory.py",
-        git_url="https://example.test/repo.git",
-        git_ref="main",
-    )
+    stack = make_stack(id=uuid.uuid4(), git_url="https://example.test/repo.git")
     run = Mock(id=uuid.uuid4(), commit_sha="abc", limit=None)
 
     KubernetesExecutor().start(run, stack, "check", "shr_token", execution_id=uuid.uuid4())
@@ -263,46 +251,67 @@ def test_kubernetes_omits_the_git_mount_without_a_deploy_key(monkeypatch):
     assert "STABLEHAND_GIT_SSH_KEY_FILE" not in {item.name for item in pod.containers[0].env}
 
 
-def test_stack_form_saves_a_deploy_key_without_showing_it(client, db):
+def test_source_form_saves_a_deploy_key_without_showing_it(client, db):
     add_user(db, "admin@example.com", role="admin")
     token = login(client, "admin@example.com")
     created = client.post(
-        "/stacks",
+        "/sources",
         data={
             "name": "ops",
-            "deploy_file": "deploy.py",
-            "inventory": "inventory.py",
-            "executor": "kubernetes",
             "git_url": "git@github.com:org/kcloud-ops.git",
             "git_ref": "main",
-            "secret_ref": "host-ssh",
             "git_ssh_key": DEPLOY_KEY,
         },
         headers=auth(token),
         follow_redirects=False,
     )
     assert created.status_code == 303
+    runtime = client.post(
+        "/runtimes",
+        data={"name": "cluster", "executor": "kubernetes", "secret_ref": "host-ssh"},
+        headers=auth(token),
+        follow_redirects=False,
+    )
+    assert runtime.status_code == 303
+    db.expire_all()
+    source = db.scalar(select(Source).where(Source.name == "ops"))
+    runtime_row = db.scalar(select(Runtime).where(Runtime.name == "cluster"))
+    stack_response = client.post(
+        "/stacks",
+        data={
+            "name": "ops",
+            "deploy_file": "deploy.py",
+            "inventory": "inventory.py",
+            "source_id": str(source.id),
+            "runtime_id": str(runtime_row.id),
+        },
+        headers=auth(token),
+        follow_redirects=False,
+    )
+    assert stack_response.status_code == 303
     db.expire_all()
     stack = db.scalar(select(Stack).where(Stack.name == "ops"))
     assert private_key(stack) == DEPLOY_KEY
+    assert stack.git_ref is None
 
     detail = client.get(f"/stacks/{stack.id}")
     assert "Deploy key saved" in detail.text
     assert "deploy-key-marker-9f3a" not in detail.text
 
-    edit = client.get(f"/stacks/{stack.id}/edit")
+    stack_edit = client.get(f"/stacks/{stack.id}/edit")
+    assert 'name="clear_git_ssh_key"' not in stack_edit.text
+    assert "deploy-key-marker-9f3a" not in stack_edit.text
+
+    edit = client.get(f"/sources/{source.id}/edit")
     assert "A deploy key is saved" in edit.text
     assert 'name="clear_git_ssh_key"' in edit.text
     assert "deploy-key-marker-9f3a" not in edit.text
     assert "<textarea" in edit.text
 
     rejected = client.post(
-        f"/stacks/{stack.id}",
+        f"/sources/{source.id}",
         data={
             "name": "ops",
-            "deploy_file": "deploy.py",
-            "inventory": "inventory.py",
-            "executor": "kubernetes",
             "git_url": "https://github.com/org/kcloud-ops.git",
             "git_ref": "main",
             "git_ssh_key": DEPLOY_KEY,
@@ -316,12 +325,9 @@ def test_stack_form_saves_a_deploy_key_without_showing_it(client, db):
     assert private_key(stack) == DEPLOY_KEY
 
     cleared = client.post(
-        f"/stacks/{stack.id}",
+        f"/sources/{source.id}",
         data={
             "name": "ops",
-            "deploy_file": "deploy.py",
-            "inventory": "inventory.py",
-            "executor": "kubernetes",
             "git_url": "git@github.com:org/kcloud-ops.git",
             "git_ref": "main",
             "clear_git_ssh_key": "on",
@@ -341,7 +347,7 @@ def test_resolve_commit_failure_still_reports_git_stderr(monkeypatch):
         raise subprocess.CalledProcessError(128, ["git"], stderr="permission denied\n")
 
     monkeypatch.setattr("stablehand.source.subprocess.check_output", check_output)
-    stack = Stack(
+    stack = make_stack(
         git_url="git@github.com:org/kcloud-ops.git",
         git_ssh_key_encrypted=encrypt_secret(DEPLOY_KEY),
     )

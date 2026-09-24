@@ -16,7 +16,7 @@ from stablehand.runs.service import (
     ingest_check_result,
     reject_run,
 )
-from tests.conftest import add_user
+from tests.conftest import add_user, make_stack
 from tests.test_normalize import FIXTURE
 
 pytestmark = pytest.mark.postgres
@@ -41,13 +41,7 @@ def test_concurrent_run_creation_allows_one_active_run(database):
     _require_postgres()
     session_factory = get_sessionmaker()
     setup = session_factory()
-    stack = Stack(
-        name="demo",
-        deploy_file="deploy.py",
-        inventory="inventory.py",
-        executor="local",
-        local_path="/tmp/demo",
-    )
+    stack = make_stack()
     setup.add(stack)
     setup.commit()
     stack_id = stack.id
@@ -93,13 +87,7 @@ def test_concurrent_approve_and_reject_have_one_winner(database):
     _require_postgres()
     session_factory = get_sessionmaker()
     setup = session_factory()
-    stack = Stack(
-        name="demo",
-        deploy_file="deploy.py",
-        inventory="inventory.py",
-        executor="local",
-        local_path="/tmp/demo",
-    )
+    stack = make_stack()
     setup.add(stack)
     setup.commit()
     approver = add_user(setup, "approver@example.com")
@@ -144,13 +132,7 @@ def test_duplicate_check_ingest_has_one_winner(database):
     _require_postgres()
     session_factory = get_sessionmaker()
     setup = session_factory()
-    stack = Stack(
-        name="demo",
-        deploy_file="deploy.py",
-        inventory="inventory.py",
-        executor="local",
-        local_path="/tmp/demo",
-    )
+    stack = make_stack()
     setup.add(stack)
     setup.commit()
     run = create_run(setup, stack, commit_sha="abc", trigger="ci", user=None)
@@ -187,13 +169,7 @@ def test_concurrent_worker_claim_has_one_winner(database):
     _require_postgres()
     session_factory = get_sessionmaker()
     setup = session_factory()
-    stack = Stack(
-        name="demo",
-        deploy_file="deploy.py",
-        inventory="inventory.py",
-        executor="local",
-        local_path="/tmp/demo",
-    )
+    stack = make_stack()
     setup.add(stack)
     setup.commit()
     run = create_run(setup, stack, commit_sha="abc", trigger="ci", user=None)

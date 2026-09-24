@@ -6,19 +6,14 @@ from sqlalchemy import select
 
 from stablehand import worker
 from stablehand.db import get_sessionmaker
-from stablehand.models import Execution, ExecutionStatus, Run, RunState, Stack, new_id
+from stablehand.models import Execution, ExecutionStatus, Run, RunState, new_id
 from stablehand.runs.service import CHECK, claim, create_run
 from stablehand.security import aware, utcnow
+from tests.conftest import make_stack
 
 
 def _stack_run(db):
-    stack = Stack(
-        name="demo",
-        deploy_file="deploy.py",
-        inventory="inventory.py",
-        executor="local",
-        local_path="/tmp/demo",
-    )
+    stack = make_stack()
     db.add(stack)
     db.commit()
     db.refresh(stack)
@@ -75,7 +70,7 @@ def test_recover_pending_execution(db, monkeypatch):
         id=new_id(),
         run_id=run.id,
         phase=CHECK,
-        backend=stack.executor,
+        backend=stack.runtime.executor,
         status=ExecutionStatus.pending.value,
         started_at=utcnow() - worker.PENDING_GRACE - timedelta(seconds=1),
     )
@@ -101,7 +96,7 @@ def test_pending_execution_prevents_unstarted_sweep(db):
             id=new_id(),
             run_id=run.id,
             phase=CHECK,
-            backend=stack.executor,
+            backend=stack.runtime.executor,
             status=ExecutionStatus.pending.value,
         )
     )
@@ -114,12 +109,8 @@ def test_pending_execution_prevents_unstarted_sweep(db):
 
 
 def test_schedule_advance_rolls_back_with_run_creation(db, monkeypatch):
-    stack = Stack(
+    stack = make_stack(
         name="scheduled",
-        deploy_file="deploy.py",
-        inventory="inventory.py",
-        executor="local",
-        local_path="/tmp/demo",
         schedule_cron="* * * * *",
         schedule_next_at=utcnow() - timedelta(minutes=1),
     )
