@@ -85,6 +85,7 @@ def test_run_page_keeps_timestamps_on_one_line(client, db):
         "counts": {"hosts": 1, "change": 1, "unchanged": 0, "unreachable": 0, "failed": 0},
         "blocked": False,
     }
+    db.add(RunLog(run_id=run.id, phase="check", body="line one\nline two"))
     db.commit()
 
     response = client.get(f"/runs/{run.id}")
@@ -98,3 +99,7 @@ def test_run_page_keeps_timestamps_on_one_line(client, db):
     assert "Approve apply of abc123def456" in page
     assert "Manual by ada@example.com" in page
     assert "Install nginx" in page
+    assert 'data-log-open="log-overlay-' in page
+    assert 'class="sh-log-dialog"' in page
+    assert "sh-log-fullscreen" in page
+    assert page.count("line one\nline two") == 2

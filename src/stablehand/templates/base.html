@@ -101,6 +101,23 @@
       }
       formatTimes();
       document.addEventListener("htmx:afterSettle", formatTimes);
+
+      document.addEventListener("click", function (event) {
+        var openButton = event.target.closest("[data-log-open]");
+        if (openButton) {
+          var dialog = document.getElementById(openButton.dataset.logOpen);
+          if (dialog && typeof dialog.showModal === "function") dialog.showModal();
+          return;
+        }
+
+        var closeButton = event.target.closest("[data-log-close]");
+        if (closeButton) {
+          closeButton.closest("dialog").close();
+          return;
+        }
+
+        if (event.target.matches("dialog.sh-log-dialog")) event.target.close();
+      });
     })();
   </script>
 </body>

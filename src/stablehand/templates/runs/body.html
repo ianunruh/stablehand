@@ -88,10 +88,26 @@
         {% if step.log_phase %}
           {% set output = log_text(run, step.log_phase) %}
           {% if output %}
+          {% set log_dialog_id = 'log-overlay-' ~ run.id ~ '-' ~ loop.index %}
           <details class="mt-3" {% if step.log_open %}open{% endif %}>
             <summary class="sh-link cursor-pointer">{{ step.log_label }}</summary>
+            <div class="sh-log-toolbar">
+              <button class="sh-log-expand" type="button" data-log-open="{{ log_dialog_id }}">Fullscreen</button>
+            </div>
             <pre class="sh-log mt-2">{{ output }}</pre>
           </details>
+          <dialog class="sh-log-dialog" id="{{ log_dialog_id }}" aria-labelledby="{{ log_dialog_id }}-title">
+            <div class="sh-log-dialog-shell">
+              <header class="sh-log-dialog-header">
+                <div>
+                  <p class="sh-section-title">Run output</p>
+                  <h2 class="sh-log-dialog-title" id="{{ log_dialog_id }}-title">{{ step.log_label }}</h2>
+                </div>
+                <button class="sh-btn sh-btn-secondary" type="button" data-log-close>Close</button>
+              </header>
+              <pre class="sh-log sh-log-fullscreen" tabindex="0">{{ output }}</pre>
+            </div>
+          </dialog>
           {% elif run.state in live_states %}
           <p class="sh-muted mt-3 text-sm">No log output yet.</p>
           {% endif %}
