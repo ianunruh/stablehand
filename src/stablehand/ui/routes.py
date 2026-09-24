@@ -648,8 +648,10 @@ def _run_or_404(db: Session, run_id: uuid.UUID) -> Run:
         .options(
             selectinload(Run.stack).selectinload(Stack.approvers),
             selectinload(Run.logs),
+            selectinload(Run.executions),
             selectinload(Run.trigger_user),
             selectinload(Run.approved_by),
+            selectinload(Run.rejected_by),
         )
     )
     if run is None:

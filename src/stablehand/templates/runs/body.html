@@ -6,71 +6,93 @@
       <h1 class="font-mono text-lg">{{ run.commit_sha }}</h1>
       {{ ui.status(run.state) }}
     </div>
-    <p class="mt-2 text-sm text-zinc-600">
-      {{ run.trigger }}
-      {% if run.trigger_user %} by {{ run.trigger_user.email }}{% endif %}
-      {% if run.approved_by %} · approved by {{ run.approved_by.email }}{% endif %}
-    </p>
-    {% if run.error %}
-    <p class="mt-3 text-sm text-red-800">{{ run.error }}</p>
-    {% endif %}
-    {% if run.reject_reason %}
-    <p class="mt-3 text-sm text-zinc-600">Rejected: {{ run.reject_reason }}</p>
-    {% endif %}
   </div>
 
-  <div class="flex items-center justify-between">
-    <h2 class="text-sm font-medium text-zinc-500">{% if run.apply_document %}Apply result{% else %}Check{% endif %}</h2>
-    {% if show_all %}
-    <a class="text-sm text-zinc-600" href="/runs/{{ run.id }}">Changes only</a>
-    {% else %}
-    <a class="text-sm text-zinc-600" href="/runs/{{ run.id }}?all=1">Show unchanged hosts</a>
-    {% endif %}
-  </div>
-  {{ ui.host_tree(run.apply_document or run.check_document, show_all) }}
-
-  {% if run.previous_check_document %}
-  <details class="rounded-md border border-zinc-200 bg-white px-4 py-3">
-    <summary class="cursor-pointer text-sm text-zinc-600">Previously approved check</summary>
-    <div class="mt-3">{{ ui.host_tree(run.previous_check_document, true) }}</div>
-  </details>
-  {% endif %}
-
-  <section>
-    <h2 class="text-sm font-medium text-zinc-500">Log</h2>
-    {% set output = log_text(run) %}
-    {% if output %}
-    <pre class="mt-2 max-h-80 overflow-auto rounded-md bg-zinc-950 p-3 font-mono text-xs leading-5 text-zinc-100">{{ output }}</pre>
-    {% else %}
-    <p class="mt-2 text-sm text-zinc-500">No log output yet.</p>
-    {% endif %}
-  </section>
-
-  {% if run.state == 'needs_approval' %}
-  <div class="approve-bar -mx-6 px-6">
-    {% set counts = counts_of(run) %}
-    <p class="text-sm text-zinc-700">{{ counts.hosts }} hosts, {{ counts.change }} will change.</p>
-    {% if approve_block and not can_approve %}
-    <p class="mt-2 text-sm text-zinc-600">{{ approve_block }}</p>
-    {% endif %}
-    <div class="mt-3 flex flex-wrap items-end gap-3">
-      {% if can_approve %}
-      <form method="post" action="/runs/{{ run.id }}/approve">
-        {{ ui.csrf() }}
-        <button class="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white" type="submit">
-          Approve apply of {{ run.commit_sha[:12] }}
-        </button>
-      </form>
-      {% endif %}
-      <form class="flex items-end gap-2" method="post" action="/runs/{{ run.id }}/reject">
-        {{ ui.csrf() }}
-        <label class="text-sm">
-          <span class="font-medium">Reject reason</span>
-          <input class="mt-1 block rounded-md border border-zinc-300 px-3 py-2" name="reason">
-        </label>
-        <button class="rounded-md border border-zinc-300 px-3 py-2 text-sm" type="submit">Reject</button>
-      </form>
-    </div>
-  </div>
-  {% endif %}
+  {% set steps = timeline(run) %}
+  {% set ns = namespace(hosts_toggle=true) %}
+  <ol>
+    {% for step in steps %}
+    <li class="grid grid-cols-[14px_minmax(0,1fr)] gap-x-3.5">
+      <div class="relative">
+        {% if not loop.last %}
+        <span class="absolute bottom-0 left-[5px] top-4 w-px bg-zinc-200"></span>
+        {% endif %}
+        <span class="relative mt-1.5 block size-2.5 rounded-full border-2 {% if loop.first %}border-zinc-900 bg-zinc-900{% else %}border-zinc-300 bg-zinc-50{% endif %}"></span>
+      </div>
+      <div class="{% if loop.last %}pb-1{% else %}pb-6{% endif %} min-w-0">
+        <div class="flex flex-nowrap items-baseline justify-between gap-4">
+          <p class="min-w-0 text-sm">
+            <span class="font-medium text-zinc-900">{{ step.title }}</span>
+            {% if step.actor %}<span class="ml-2 text-zinc-500">{{ step.actor }}</span>{% endif %}
+          </p>
+          <time class="shrink-0 whitespace-nowrap text-sm tabular-nums text-zinc-500" datetime="{{ isoformat_utc(step.at) }}">{{ format_timestamp(step.at) }}</time>
+        </div>
+        {% if step.detail %}
+        <p class="mt-1 text-sm text-zinc-600">{{ step.detail }}</p>
+        {% endif %}
+        {% if step.error %}
+        <p class="mt-2 text-sm text-red-800">{{ step.error }}</p>
+        {% endif %}
+        {% if step.document %}
+          <div class="mt-2">
+            {% if ns.hosts_toggle %}
+            {% call ui.host_tree(step.document, show_all) %}
+              {% if show_all %}
+              <a class="shrink-0 whitespace-nowrap text-sm text-zinc-600" href="/runs/{{ run.id }}">Changes only</a>
+              {% else %}
+              <a class="shrink-0 whitespace-nowrap text-sm text-zinc-600" href="/runs/{{ run.id }}?all=1">Show unchanged hosts</a>
+              {% endif %}
+            {% endcall %}
+            {% set ns.hosts_toggle = false %}
+            {% else %}
+            {{ ui.host_tree(step.document, show_all) }}
+            {% endif %}
+          </div>
+        {% endif %}
+        {% if step.approval %}
+        <div class="mt-4">
+          {% if approve_block and not can_approve %}
+          <p class="text-sm text-zinc-600">{{ approve_block }}</p>
+          {% endif %}
+          <div class="flex flex-wrap items-end gap-3">
+            {% if can_approve %}
+            <form method="post" action="/runs/{{ run.id }}/approve">
+              {{ ui.csrf() }}
+              <button class="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white" type="submit">
+                Approve apply of {{ run.commit_sha[:12] }}
+              </button>
+            </form>
+            {% endif %}
+            <form class="flex items-end gap-2" method="post" action="/runs/{{ run.id }}/reject">
+              {{ ui.csrf() }}
+              <label class="text-sm">
+                <span class="font-medium">Reject reason</span>
+                <input class="mt-1 block rounded-md border border-zinc-300 bg-white px-3 py-2" name="reason">
+              </label>
+              <button class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm" type="submit">Reject</button>
+            </form>
+          </div>
+        </div>
+        {% endif %}
+        {% if step.previous_document %}
+        <details class="mt-3 rounded-md border border-zinc-200 bg-white px-4 py-3">
+          <summary class="cursor-pointer text-sm text-zinc-600">Previously approved check</summary>
+          <div class="mt-3">{{ ui.host_tree(step.previous_document, true) }}</div>
+        </details>
+        {% endif %}
+        {% if step.log_phase %}
+          {% set output = log_text(run, step.log_phase) %}
+          {% if output %}
+          <details class="mt-3" {% if step.log_open %}open{% endif %}>
+            <summary class="cursor-pointer text-sm text-zinc-600">{{ step.log_label }}</summary>
+            <pre class="mt-2 max-h-80 overflow-auto rounded-md bg-zinc-950 p-3 font-mono text-xs leading-5 text-zinc-100">{{ output }}</pre>
+          </details>
+          {% elif run.state in live_states %}
+          <p class="mt-3 text-sm text-zinc-500">No log output yet.</p>
+          {% endif %}
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
 </div>

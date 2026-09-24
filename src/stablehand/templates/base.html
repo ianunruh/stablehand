@@ -39,5 +39,19 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
+  <script>
+    (function () {
+      var options = { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" };
+      function formatTimes() {
+        document.querySelectorAll("time[datetime]").forEach(function (node) {
+          var date = new Date(node.getAttribute("datetime"));
+          if (Number.isNaN(date.getTime())) return;
+          node.textContent = new Intl.DateTimeFormat(undefined, options).format(date);
+        });
+      }
+      formatTimes();
+      document.addEventListener("htmx:afterSettle", formatTimes);
+    })();
+  </script>
 </body>
 </html>

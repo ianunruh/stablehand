@@ -19,7 +19,10 @@
 <p class="text-sm text-zinc-500">No host results yet.</p>
 {% else %}
 {% set counts = document.counts %}
-<p class="text-sm text-zinc-600">{{ counts.hosts }} hosts, {{ counts.change }} will change, {{ counts.unchanged }} in sync, {{ counts.unreachable }} unreachable, {{ counts.failed }} failed</p>
+<div class="flex items-baseline justify-between gap-4">
+  <p class="min-w-0 text-sm text-zinc-600">{{ counts.hosts }} hosts, {{ counts.change }} will change, {{ counts.unchanged }} in sync, {{ counts.unreachable }} unreachable, {{ counts.failed }} failed</p>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
 <div class="mt-3 space-y-2">
   {% for host in document.hosts %}
     {% if show_all or host.status != 'unchanged' %}

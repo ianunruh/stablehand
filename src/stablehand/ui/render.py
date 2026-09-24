@@ -7,6 +7,7 @@ from stablehand.config import get_settings
 from stablehand.models import LIVE_STATES, RunState
 from stablehand.runs.service import counts_of, log_text
 from stablehand.security import csrf_token
+from stablehand.ui.timeline import format_timestamp, isoformat_utc, timeline
 
 STATE_LABELS = {
     RunState.check_queued.value: "Check queued",
@@ -25,6 +26,9 @@ templates = Jinja2Templates(directory=str(get_settings().package_dir / "template
 templates.env.globals["state_label"] = lambda state: STATE_LABELS.get(state, state)
 templates.env.globals["counts_of"] = counts_of
 templates.env.globals["log_text"] = log_text
+templates.env.globals["timeline"] = timeline
+templates.env.globals["format_timestamp"] = format_timestamp
+templates.env.globals["isoformat_utc"] = isoformat_utc
 templates.env.globals["live_states"] = {state.value for state in LIVE_STATES}
 templates.env.globals["public_url"] = lambda: get_settings().public_url.rstrip("/")
 
