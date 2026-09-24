@@ -13,8 +13,11 @@ import httpx
 from stablehand.gitssh import ssh_command
 from stablehand.limits import limit_patterns
 
+_HOST_KEY_NAMES = ("id_ed25519", "id_rsa", "id_ecdsa")
+
 
 def main() -> None:
+    install_host_keys()
     phase = os.environ["STABLEHAND_PHASE"]
     try:
         with materialize_source() as source:
@@ -75,6 +78,31 @@ def materialize_source() -> Iterator[Path]:
         subprocess.check_call(["git", "clone", "--branch", ref, url, str(dest)], env=env)
         subprocess.check_call(["git", "checkout", sha], cwd=dest, env=env)
         yield dest
+
+
+def install_host_keys() -> None:
+    """Point pyinfra's default key search at the host secret.
+
+    With no inventory ``ssh_key``, Paramiko only tries ``~/.ssh/id_*``. The
+    secret is mounted elsewhere, so copy the standard names into a private home.
+    """
+    secrets = os.environ.get("STABLEHAND_SECRETS", "").strip()
+    if not secrets:
+        return
+    source = Path(secrets)
+    if not source.is_dir():
+        return
+    names = [name for name in _HOST_KEY_NAMES if (source / name).is_file()]
+    if not names:
+        return
+    home = Path(tempfile.mkdtemp(prefix="stablehand-home-"))
+    ssh_dir = home / ".ssh"
+    ssh_dir.mkdir(mode=0o700)
+    for name in names:
+        dest = ssh_dir / name
+        dest.write_bytes((source / name).read_bytes())
+        dest.chmod(0o600)
+    os.environ["HOME"] = str(home)
 
 
 def git_env() -> dict[str, str]:

@@ -1,5 +1,7 @@
+import os
 import subprocess
 from contextlib import nullcontext
+from pathlib import Path
 
 import pytest
 
@@ -137,3 +139,34 @@ def test_git_checkout_is_removed_when_clone_fails(monkeypatch):
 
     assert checkout_root is not None
     assert not checkout_root.exists()
+
+
+def test_host_secret_becomes_the_default_ssh_identity(monkeypatch, tmp_path):
+    secrets = tmp_path / "secrets"
+    secrets.mkdir()
+    (secrets / "id_ed25519").write_text("host-key\n")
+    (secrets / "note.txt").write_text("ignore")
+    monkeypatch.setenv("STABLEHAND_SECRETS", str(secrets))
+    monkeypatch.setenv("HOME", str(tmp_path / "original"))
+
+    runner.install_host_keys()
+
+    home = Path(os.environ["HOME"])
+    installed = home / ".ssh" / "id_ed25519"
+    assert home != tmp_path / "original"
+    assert installed.read_text() == "host-key\n"
+    assert installed.stat().st_mode & 0o777 == 0o600
+    assert not (home / ".ssh" / "note.txt").exists()
+
+
+def test_host_secret_without_a_default_identity_keeps_home(monkeypatch, tmp_path):
+    secrets = tmp_path / "secrets"
+    secrets.mkdir()
+    (secrets / "note.txt").write_text("ignore")
+    original = tmp_path / "original"
+    monkeypatch.setenv("STABLEHAND_SECRETS", str(secrets))
+    monkeypatch.setenv("HOME", str(original))
+
+    runner.install_host_keys()
+
+    assert os.environ["HOME"] == str(original)
