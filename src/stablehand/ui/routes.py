@@ -239,6 +239,8 @@ def stack_create(
     git_ref: Annotated[str, Form()] = "",
     local_path: Annotated[str, Form()] = "",
     secret_ref: Annotated[str, Form()] = "",
+    git_ssh_key: Annotated[str, Form()] = "",
+    clear_git_ssh_key: Annotated[str, Form()] = "",
     schedule_cron: Annotated[str, Form()] = "",
     approver_groups: Annotated[str, Form()] = "",
     approver_user_id: Annotated[list[str] | None, Form()] = None,
@@ -259,6 +261,8 @@ def stack_create(
             schedule_cron=schedule_cron,
             approver_user_ids=approver_user_id or [],
             approver_groups=approver_groups,
+            git_ssh_key=git_ssh_key,
+            clear_git_ssh_key=bool(clear_git_ssh_key),
         )
     except (StackError, ValueError) as exc:
         db.rollback()
@@ -328,6 +332,8 @@ def stack_update(
     git_ref: Annotated[str, Form()] = "",
     local_path: Annotated[str, Form()] = "",
     secret_ref: Annotated[str, Form()] = "",
+    git_ssh_key: Annotated[str, Form()] = "",
+    clear_git_ssh_key: Annotated[str, Form()] = "",
     schedule_cron: Annotated[str, Form()] = "",
     approver_groups: Annotated[str, Form()] = "",
     approver_user_id: Annotated[list[str] | None, Form()] = None,
@@ -349,6 +355,8 @@ def stack_update(
             schedule_cron=schedule_cron,
             approver_user_ids=approver_user_id or [],
             approver_groups=approver_groups,
+            git_ssh_key=git_ssh_key,
+            clear_git_ssh_key=bool(clear_git_ssh_key),
         )
     except (StackError, ValueError) as exc:
         db.rollback()

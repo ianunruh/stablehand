@@ -101,6 +101,12 @@
       }
       formatTimes();
       document.addEventListener("htmx:afterSettle", formatTimes);
+      document.addEventListener("htmx:beforeSwap", function (event) {
+        if (event.detail.xhr.status === 400) {
+          event.detail.shouldSwap = true;
+          event.detail.isError = false;
+        }
+      });
 
       document.addEventListener("click", function (event) {
         var openButton = event.target.closest("[data-log-open]");

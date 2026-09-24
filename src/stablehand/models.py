@@ -144,6 +144,7 @@ class Stack(Base):
     git_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     local_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     secret_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    git_ssh_key_encrypted: Mapped[str] = mapped_column(Text, default="", server_default="")
     schedule_cron: Mapped[str | None] = mapped_column(String(100), nullable=True)
     schedule_next_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

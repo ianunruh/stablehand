@@ -7,9 +7,10 @@ from croniter import croniter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from stablehand.gitssh import is_ssh_git_url
 from stablehand.limits import normalize_limit
 from stablehand.models import ApiToken, ExecutorKind, Stack, StackApprover, User
-from stablehand.security import after, hash_token, new_token, token_prefix, utcnow
+from stablehand.security import after, encrypt_secret, hash_token, new_token, token_prefix, utcnow
 
 
 class StackError(Exception):
@@ -65,7 +66,14 @@ def save_stack(
     schedule_cron: str,
     approver_user_ids: list[str],
     approver_groups: str,
+    git_ssh_key: str = "",
+    clear_git_ssh_key: bool = False,
 ) -> Stack:
+    encrypted_key = _git_ssh_key(stack, git_ssh_key, clear_git_ssh_key)
+    if encrypted_key and not is_ssh_git_url(git_url):
+        raise StackError(
+            "A deploy key requires an SSH git URL, such as git@github.com:org/repo.git."
+        )
     validate_stack(
         name=name,
         deploy_file=deploy_file,
@@ -89,6 +97,7 @@ def save_stack(
     stack.git_ref = (git_ref.strip() or "main") if stack.git_url else None
     stack.local_path = local_path.strip() or None
     stack.secret_ref = secret_ref.strip() or None
+    stack.git_ssh_key_encrypted = encrypted_key
     stack.schedule_cron = schedule_cron.strip() or None
     if stack.schedule_cron and stack.schedule_next_at is None:
         stack.schedule_next_at = next_schedule(stack.schedule_cron, utcnow())
@@ -146,3 +155,20 @@ def user_choices(session: Session) -> list[User]:
 
 def _groups(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _git_ssh_key(stack: Stack | None, pasted: str, clear: bool) -> str:
+    text = pasted.strip()
+    if text:
+        return encrypt_secret(_normalize_deploy_key(text))
+    if clear or stack is None:
+        return ""
+    return stack.git_ssh_key_encrypted or ""
+
+
+def _normalize_deploy_key(value: str) -> str:
+    if "-----BEGIN " not in value or "PRIVATE KEY" not in value:
+        raise StackError("Deploy key must be a PEM SSH private key.")
+    if len(value) > 100_000:
+        raise StackError("Deploy key is too large.")
+    return value + "\n"

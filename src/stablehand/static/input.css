@@ -595,6 +595,14 @@
     font: inherit;
   }
 
+  textarea.sh-input {
+    min-height: 8.5rem;
+    resize: vertical;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+
   .sh-input:focus,
   .sh-select:focus {
     border-color: var(--focus);

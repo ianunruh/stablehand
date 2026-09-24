@@ -35,6 +35,14 @@
 </label>
 {% endmacro %}
 
+{% macro textarea(label, name, hint='', rows=6) %}
+<label class="sh-field">
+  <span class="sh-label">{{ label }}</span>
+  <textarea class="sh-input" name="{{ name }}" rows="{{ rows }}" autocomplete="off" spellcheck="false"></textarea>
+  {% if hint %}<span class="sh-field-hint">{{ hint }}</span>{% endif %}
+</label>
+{% endmacro %}
+
 {% macro select_field(label, name, hint='') %}
 <label class="sh-field">
   <span class="sh-label">{{ label }}</span>

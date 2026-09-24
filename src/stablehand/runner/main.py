@@ -10,6 +10,7 @@ from pathlib import Path
 
 import httpx
 
+from stablehand.gitssh import ssh_command
 from stablehand.limits import limit_patterns
 
 
@@ -78,17 +79,9 @@ def materialize_source() -> Iterator[Path]:
 
 def git_env() -> dict[str, str]:
     env = os.environ.copy()
-    secrets = os.environ.get("STABLEHAND_SECRETS")
-    if not secrets:
-        return env
-    directory = Path(secrets)
-    for name in ("id_ed25519", "id_rsa"):
-        key = directory / name
-        if key.exists():
-            env["GIT_SSH_COMMAND"] = (
-                f"ssh -i {key} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
-            )
-            break
+    key_file = os.environ.get("STABLEHAND_GIT_SSH_KEY_FILE", "").strip()
+    if key_file:
+        env["GIT_SSH_COMMAND"] = ssh_command(Path(key_file))
     return env
 
 

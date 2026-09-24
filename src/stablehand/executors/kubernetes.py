@@ -8,6 +8,7 @@ from kubernetes.client import ApiException
 
 from stablehand.config import get_settings
 from stablehand.executors.base import Executor, runner_env
+from stablehand.gitssh import MOUNTED_KEY, private_key
 from stablehand.models import Execution, Run, Stack
 
 logger = logging.getLogger(__name__)
@@ -42,8 +43,29 @@ class KubernetesExecutor(Executor):
                 ),
             )
         )
+        secret_data = {"token": token}
+        git_key = private_key(stack)
+        if git_key:
+            secret_data["id_ed25519"] = git_key if git_key.endswith("\n") else f"{git_key}\n"
+            env.append(client.V1EnvVar(name="STABLEHAND_GIT_SSH_KEY_FILE", value=str(MOUNTED_KEY)))
         volumes = []
         mounts = []
+        if git_key:
+            volumes.append(
+                client.V1Volume(
+                    name="git-ssh",
+                    secret=client.V1SecretVolumeSource(
+                        secret_name=secret_name,
+                        default_mode=0o400,
+                        items=[client.V1KeyToPath(key="id_ed25519", path="id_ed25519", mode=0o400)],
+                    ),
+                )
+            )
+            mounts.append(
+                client.V1VolumeMount(
+                    name="git-ssh", mount_path=str(MOUNTED_KEY.parent), read_only=True
+                )
+            )
         if stack.secret_ref:
             volumes.append(
                 client.V1Volume(
@@ -85,7 +107,7 @@ class KubernetesExecutor(Executor):
                 namespace,
                 client.V1Secret(
                     metadata=client.V1ObjectMeta(name=secret_name),
-                    string_data={"token": token},
+                    string_data=secret_data,
                 ),
             )
             batch.create_namespaced_job(namespace, job)

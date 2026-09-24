@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from stablehand.gitssh import GitKeyError, private_key, ssh_environment
 from stablehand.models import Stack
 
 
@@ -33,11 +34,16 @@ def resolve_commit(stack: Stack) -> str:
         raise SourceError("Stack has no git URL or local path.")
     ref = stack.git_ref or "HEAD"
     try:
-        output = subprocess.check_output(
-            ["git", "ls-remote", stack.git_url, ref],
-            text=True,
-            stderr=subprocess.PIPE,
-        )
+        key = private_key(stack)
+        with ssh_environment(key) as env:
+            output = subprocess.check_output(
+                ["git", "ls-remote", stack.git_url, ref],
+                text=True,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
+    except GitKeyError as exc:
+        raise SourceError(exc.message) from exc
     except subprocess.CalledProcessError as exc:
         raise SourceError(exc.stderr.strip() or "Could not resolve the git revision.") from exc
     lines = [line for line in output.splitlines() if line.strip()]

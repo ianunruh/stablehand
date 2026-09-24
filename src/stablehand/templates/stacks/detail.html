@@ -27,6 +27,9 @@
     <button class="sh-btn sh-btn-primary w-full" type="submit">Start check</button>
   </form>
 </div>
+{% if stack.git_ssh_key_encrypted %}
+<p class="sh-meta"><span>Git auth</span><span>Deploy key saved</span></p>
+{% endif %}
 {% if stack.schedule_cron %}
 <p class="sh-meta"><span>Schedule</span><span class="sh-mono">{{ stack.schedule_cron }}</span>{% if stack.schedule_next_at %}<span aria-hidden="true">·</span>{{ ui.timestamp(stack.schedule_next_at, 'Next') }}{% endif %}</p>
 {% endif %}
